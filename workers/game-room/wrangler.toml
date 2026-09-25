@@ -9,3 +9,6 @@ class_name = "GameRoomDurableObject"
 [[migrations]]
 tag = "v2"
 renamed_classes = [{ from = "GameRoom", to = "GameRoomDurableObject" }]
+
+[vars]
+# Set TELEGRAM_BOT_TOKEN with: wrangler secret put TELEGRAM_BOT_TOKEN
