@@ -6,9 +6,10 @@ type Props = {
   playerModes?: number[];
   selectedMode?: number;
   onModeChange?: (count: number) => void;
+  onPlay?: () => void;
 };
 
-export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selectedMode, onModeChange }: Props) {
+export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selectedMode, onModeChange, onPlay }: Props) {
   return (
     <article className="game-card">
       <div className="game-icon">{emoji}</div>
@@ -26,7 +27,7 @@ export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selec
           </div>
         )}
       </div>
-      <button className="play" type="button">بازی</button>
+      <button className="play" type="button" onClick={onPlay}>بازی</button>
     </article>
   );
 }
