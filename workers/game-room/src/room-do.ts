@@ -115,9 +115,32 @@ export class GameRoomDurableObject {
     if (this.game) await this.state.storage.put("game", this.game);
   }
 
-  private response() {
+  private response(viewerId?: string) {
     if (!this.room) throw new Error("Room does not exist");
-    return Response.json({ room: this.room.getState(), game: this.game ?? null });
+
+    if (!this.game) {
+      return Response.json({ room: this.room.getState(), game: null });
+    }
+
+    if (!viewerId) throw new Error("Authentication required");
+
+    const game = structuredClone(this.game);
+    game.deck = [];
+    game.removedCards = [];
+
+    for (const player of game.players) {
+      if (player.id !== viewerId) game.hands[player.id] = [];
+    }
+
+    if (game.twoPlayerBuild) {
+      game.twoPlayerBuild.stock = [];
+      game.twoPlayerBuild.discarded = [];
+      for (const player of game.players) {
+        if (player.id !== viewerId) game.twoPlayerBuild.kept[player.id] = [];
+      }
+    }
+
+    return Response.json({ room: this.room.getState(), game });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -128,9 +151,20 @@ export class GameRoomDurableObject {
         ? { type: "state" }
         : await request.json<Action>();
 
-      if (action.type === "state") return this.response();
-
       const botToken = request.headers.get("x-bia-bot-token") || "";
+
+      if (action.type === "state") {
+        const initData = request.headers.get("x-telegram-init-data") || "";
+        const telegramUser = await verifyTelegramInitData(initData, botToken);
+        const viewerId = String(telegramUser.id);
+
+        if (!this.room) throw new Error("Room does not exist");
+        if (!this.room.getState().players.some(player => player.id === viewerId)) {
+          throw new Error("You are not a player in this room");
+        }
+
+        return this.response(viewerId);
+      }
       const telegramUser = await verifyTelegramInitData(action.initData, botToken);
       const userId = String(telegramUser.id);
 
@@ -224,7 +258,7 @@ export class GameRoomDurableObject {
       }
 
       await this.save();
-      return this.response();
+      return this.response(userId);
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "Unknown error" },
