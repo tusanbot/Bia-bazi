@@ -29,8 +29,9 @@ export default function Home() {
         <GameCard
           emoji="🃏"
           title="حکم"
-          subtitle="بازی کلاسیک ۴ نفره"
-          meta="۴ بازیکن"
+          subtitle="حکم دو، سه و چهار نفره"
+          meta="۲ تا ۴ بازیکن"
+          playerModes={[2, 3, 4]}
         />
       </section>
 
