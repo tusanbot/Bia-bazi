@@ -345,3 +345,7 @@ export function isLegalMove(state: HokmState, playerId: PlayerId, cardId: string
   const hand = state.hands[playerId] || [];
   return legalCards(hand, state.trick[0]?.card.suit).some(c => c.id === cardId);
 }
+
+
+export { createHokmRoom, createHokmRoomConfig } from "./room";
+export type { HokmRoomConfig } from "./room";
