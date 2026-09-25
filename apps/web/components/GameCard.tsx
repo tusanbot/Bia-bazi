@@ -3,9 +3,10 @@ type Props = {
   title: string;
   subtitle: string;
   meta: string;
+  playerModes?: number[];
 };
 
-export function GameCard({ emoji, title, subtitle, meta }: Props) {
+export function GameCard({ emoji, title, subtitle, meta, playerModes = [] }: Props) {
   return (
     <article className="game-card">
       <div className="game-icon">{emoji}</div>
@@ -13,8 +14,17 @@ export function GameCard({ emoji, title, subtitle, meta }: Props) {
         <h3>{title}</h3>
         <p>{subtitle}</p>
         <small>{meta}</small>
+        {playerModes.length > 0 && (
+          <div className="player-modes" aria-label="حالت‌های تعداد بازیکن">
+            {playerModes.map(count => (
+              <button key={count} type="button" className="mode-chip">
+                {count} نفره
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <button className="play">بازی</button>
+      <button className="play" type="button">بازی</button>
     </article>
   );
 }
