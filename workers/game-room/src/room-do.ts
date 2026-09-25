@@ -4,7 +4,7 @@ import {
   discardTwo,
   drawTwo,
   playCard,
-  finishHand,\n  startNextHand,
+  finishHand,
   startNextHand,
   createHokmRoom,
   type HokmPlayerCount,
@@ -15,7 +15,9 @@ import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 
 export interface Env { GAME_ROOM: DurableObjectNamespace; TELEGRAM_BOT_TOKEN: string; }
 
-type PlayerInput = { id: string; displayName: string; username?: string };\ntype TelegramUser = { id: number; username?: string; first_name?: string; last_name?: string };\ntype ActionAuth = { initData: string };
+type PlayerInput = { id: string; displayName: string; username?: string };
+type TelegramUser = { id: number; username?: string; first_name?: string; last_name?: string };
+type ActionAuth = { initData: string };
 
 type Action =
   | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: PlayerInput }
@@ -28,7 +30,8 @@ type Action =
   | { type: "discard_two"; playerId: string; cardIds: string[] }
   | { type: "draw_two"; playerId: string; keep: boolean }
   | { type: "play_card"; playerId: string; cardId: string }
-  | { type: "finish_hand"; initData: string }\n  | { type: "next_hand"; initData: string };
+  | { type: "finish_hand"; initData: string }
+  | { type: "next_hand"; initData: string };
 
 
 async function verifyTelegramInitData(initData: string, botToken: string): Promise<TelegramUser> {
@@ -37,7 +40,8 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
   const received = params.get("hash");
   const authDate = Number(params.get("auth_date") || 0);
   if (!received || !authDate || Math.abs(Date.now() / 1000 - authDate) > 86400) throw new Error("Invalid or expired Telegram authentication");
-  const checkString = [...params.entries()].filter(([k]) => k !== "hash").sort(([a], [b]) => a.localeCompare(b)).map(([k,v]) => k + "=" + v).join("\\n");
+  const checkString = [...params.entries()].filter(([k]) => k !== "hash").sort(([a], [b]) => a.localeCompare(b)).map(([k,v]) => k + "=" + v).join("\
+");
   const enc = new TextEncoder();
   const tokenKey = await crypto.subtle.importKey("raw", enc.encode(botToken), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const secret = await crypto.subtle.sign("HMAC", tokenKey, enc.encode("WebAppData"));
@@ -84,7 +88,10 @@ export class GameRoomDurableObject {
           ? { type: "state" }
           : await request.json<Action>();
 
-      const needsAuth = action.type !== "state";\n      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, request.headers.get("x-bia-bot-token") || "") : null;\n\n      if (action.type === "create") {
+      const needsAuth = action.type !== "state";
+      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, request.headers.get("x-bia-bot-token") || "") : null;
+
+      if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
         this.room = createHokmRoom(
           this.state.id.toString(),
@@ -177,6 +184,8 @@ export default {
     }
 
     const id = env.GAME_ROOM.idFromName(roomId);
-    const headers = new Headers(request.headers);\n    headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);\n    return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
+    const headers = new Headers(request.headers);
+    headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);
+    return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
   }
 };
