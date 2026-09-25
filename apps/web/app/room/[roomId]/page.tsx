@@ -69,15 +69,17 @@ export default function RoomPage() {
     }
   }
 
+  useEffect(() => {
+    if (data?.room.status === "playing") {
+      router.replace(`/room/${roomId}/game`);
+    }
+  }, [data?.room.status, roomId, router]);
+
   if (!data) {
     return <main className="shell"><div className="room-panel">در حال بارگذاری اتاق...</div>{error && <p className="error">{error}</p>}</main>;
   }
 
   const { room } = data;
-
-  useEffect(() => {
-    if (room.status === "playing") router.replace(`/room/${roomId}/game`);
-  }, [room.status, roomId, router]);
   const isJoined = room.players.some(p => p.id === playerId);
   const isHost = room.hostId === playerId;
   const canChange = room.status === "waiting" && isHost;
