@@ -38,7 +38,11 @@ export default function RoomPage() {
   const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "بازیکن";
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, { cache: "no-store" });
+    const initData = window.Telegram?.WebApp?.initData ?? "";
+    const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+      cache: "no-store",
+      headers: initData ? { "x-telegram-init-data": initData } : {}
+    });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "خطا در دریافت اتاق");
     setData(json);
