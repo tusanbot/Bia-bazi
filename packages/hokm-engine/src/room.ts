@@ -18,8 +18,8 @@ export function createHokmRoomConfig(playerCount: HokmPlayerCount): HokmRoomConf
   return {
     gameId: "hokm",
     playerCount,
-    minPlayers: playerCount,
-    maxPlayers: playerCount
+    minPlayers: 2,
+    maxPlayers: 4
   };
 }
 
