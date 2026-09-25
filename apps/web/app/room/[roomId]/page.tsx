@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { initTelegram, telegramUser } from "../../../../lib/telegram";
 
 type RoomPlayer = {
   id: string;
@@ -28,9 +29,12 @@ export default function RoomPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
 
-  const playerId = "telegram-user";
-  const displayName = "بازیکن";
+  useEffect(() => { initTelegram(); setUser(telegramUser()); }, []);
+
+  const playerId = user ? String(user.id) : "";
+  const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "بازیکن";
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, { cache: "no-store" });
@@ -52,7 +56,7 @@ export default function RoomPage() {
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
@@ -102,7 +106,9 @@ export default function RoomPage() {
           ))}
         </div>
 
-        {!isJoined && room.status === "waiting" && (
+        {!user && <p className="error">برای ورود به بازی، اتاق را از داخل تلگرام باز کنید.</p>}
+
+        {user && !isJoined && room.status === "waiting" && (
           <button className="primary wide" disabled={busy} onClick={() => act({ type: "join", player: { id: playerId, displayName } })}>
             ورود به اتاق
           </button>
