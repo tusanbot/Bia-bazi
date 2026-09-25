@@ -13,45 +13,86 @@ import {
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 
-export interface Env { GAME_ROOM: DurableObjectNamespace; TELEGRAM_BOT_TOKEN: string; }
+export interface Env {
+  GAME_ROOM: DurableObjectNamespace;
+  TELEGRAM_BOT_TOKEN: string;
+}
 
-type PlayerInput = { id: string; displayName: string; username?: string };
-type TelegramUser = { id: number; username?: string; first_name?: string; last_name?: string };
-type ActionAuth = { initData: string };
+type TelegramUser = {
+  id: number;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+};
 
 type Action =
-  | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: PlayerInput }
+  | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: unknown; initData: string }
   | { type: "state" }
-  | { type: "join"; player: PlayerInput }
-  | { type: "leave"; playerId: string }
-  | { type: "change_player_count"; playerCount: HokmPlayerCount }
-  | { type: "start" }
-  | { type: "choose_hokm"; playerId: string; suit: Suit }
-  | { type: "discard_two"; playerId: string; cardIds: string[] }
-  | { type: "draw_two"; playerId: string; keep: boolean }
-  | { type: "play_card"; playerId: string; cardId: string }
+  | { type: "join"; player: unknown; initData: string }
+  | { type: "leave"; playerId: string; initData: string }
+  | { type: "change_player_count"; playerCount: HokmPlayerCount; initData: string }
+  | { type: "start"; initData: string }
+  | { type: "choose_hokm"; playerId: string; suit: Suit; initData: string }
+  | { type: "discard_two"; playerId: string; cardIds: string[]; initData: string }
+  | { type: "draw_two"; playerId: string; keep: boolean; initData: string }
+  | { type: "play_card"; playerId: string; cardId: string; initData: string }
   | { type: "finish_hand"; initData: string }
   | { type: "next_hand"; initData: string };
 
+function displayName(user: TelegramUser) {
+  return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن";
+}
 
 async function verifyTelegramInitData(initData: string, botToken: string): Promise<TelegramUser> {
-  if (!initData) throw new Error("Telegram authentication is required");
+  if (!initData || !botToken) throw new Error("Telegram authentication is not configured");
+
   const params = new URLSearchParams(initData);
-  const received = params.get("hash");
+  const receivedHash = params.get("hash");
   const authDate = Number(params.get("auth_date") || 0);
-  if (!received || !authDate || Math.abs(Date.now() / 1000 - authDate) > 86400) throw new Error("Invalid or expired Telegram authentication");
-  const checkString = [...params.entries()].filter(([k]) => k !== "hash").sort(([a], [b]) => a.localeCompare(b)).map(([k,v]) => k + "=" + v).join("\
-");
-  const enc = new TextEncoder();
-  const tokenKey = await crypto.subtle.importKey("raw", enc.encode(botToken), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const secret = await crypto.subtle.sign("HMAC", tokenKey, enc.encode("WebAppData"));
-  const dataKey = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const digest = await crypto.subtle.sign("HMAC", dataKey, enc.encode(checkString));
-  const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,"0")).join("");
-  if (hex !== received) throw new Error("Invalid Telegram authentication signature");
-  const raw = params.get("user");
-  if (!raw) throw new Error("Telegram user is missing");
-  return JSON.parse(raw) as TelegramUser;
+
+  if (!receivedHash || !authDate || Math.abs(Date.now() / 1000 - authDate) > 86400) {
+    throw new Error("Invalid or expired Telegram authentication");
+  }
+
+  const checkString = [...params.entries()]
+    .filter(([key]) => key !== "hash")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => key + "=" + value)
+    .join(String.fromCharCode(10));
+
+  const encoder = new TextEncoder();
+  const tokenKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(botToken),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const secret = await crypto.subtle.sign("HMAC", tokenKey, encoder.encode("WebAppData"));
+  const dataKey = await crypto.subtle.importKey(
+    "raw",
+    secret,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const digest = await crypto.subtle.sign("HMAC", dataKey, encoder.encode(checkString));
+  const expectedHash = [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+  if (expectedHash !== receivedHash) {
+    throw new Error("Invalid Telegram authentication signature");
+  }
+
+  const rawUser = params.get("user");
+  if (!rawUser) throw new Error("Telegram user is missing");
+
+  const user = JSON.parse(rawUser) as TelegramUser;
+  if (!user.id) throw new Error("Telegram user id is missing");
+  return user;
 }
 
 export class GameRoomDurableObject {
@@ -62,8 +103,8 @@ export class GameRoomDurableObject {
 
   private async load() {
     if (this.room) return this.room;
-    const stored = await this.state.storage.get<GameRoomState>("room");
-    if (stored) this.room = new GameRoom(stored);
+    const storedRoom = await this.state.storage.get<GameRoomState>("room");
+    if (storedRoom) this.room = new GameRoom(storedRoom);
     this.game = await this.state.storage.get<HokmState>("game");
     return this.room;
   }
@@ -83,21 +124,29 @@ export class GameRoomDurableObject {
     try {
       await this.load();
 
-      const action: Action =
-        request.method === "GET"
-          ? { type: "state" }
-          : await request.json<Action>();
+      const action: Action = request.method === "GET"
+        ? { type: "state" }
+        : await request.json<Action>();
 
-      const needsAuth = action.type !== "state";
-      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, request.headers.get("x-bia-bot-token") || "") : null;
+      if (action.type === "state") return this.response();
+
+      const botToken = request.headers.get("x-bia-bot-token") || "";
+      const telegramUser = await verifyTelegramInitData(action.initData, botToken);
+      const userId = String(telegramUser.id);
 
       if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
+
         this.room = createHokmRoom(
           this.state.id.toString(),
           action.playerCount,
-          action.host
+          {
+            id: userId,
+            displayName: displayName(telegramUser),
+            username: telegramUser.username
+          }
         );
+
         await this.save();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
       }
@@ -105,60 +154,73 @@ export class GameRoomDurableObject {
       if (!this.room) throw new Error("Room does not exist");
 
       switch (action.type) {
-        case "state":
-          return this.response();
-
         case "join":
-          this.room.join(action.player);
+          this.room.join({
+            id: userId,
+            displayName: displayName(telegramUser),
+            username: telegramUser.username
+          });
           break;
 
         case "leave":
-          this.room.leave(action.playerId);
+          if (action.playerId !== userId) throw new Error("You can only leave as yourself");
+          this.room.leave(userId);
           break;
 
         case "change_player_count":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can change player count");
           this.room.setPlayerCount(action.playerCount);
           break;
 
         case "start": {
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
           const players = this.room.getState().players.map(({ id, seat }) => ({ id, seat }));
-          const hostId = this.room.getState().hostId;
-          this.game = buildInitialState(players, hostId, hostId);
+          this.game = buildInitialState(players, userId, userId);
           this.room.markPlaying();
           break;
         }
 
         case "choose_hokm":
           this.requireGame();
-          this.game = chooseHokm(this.game, action.playerId, action.suit);
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.game = chooseHokm(this.game, userId, action.suit);
           break;
 
         case "discard_two":
           this.requireGame();
-          this.game = discardTwo(this.game, action.playerId, action.cardIds);
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.game = discardTwo(this.game, userId, action.cardIds);
           break;
 
         case "draw_two":
           this.requireGame();
-          this.game = drawTwo(this.game, action.playerId, action.keep);
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.game = drawTwo(this.game, userId, action.keep);
           break;
 
         case "play_card":
           this.requireGame();
-          this.game = playCard(this.game, action.playerId, action.cardId);
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.game = playCard(this.game, userId, action.cardId);
           break;
 
         case "finish_hand":
           this.requireGame();
+          if (!this.game.players.some(player => player.id === userId)) throw new Error("You are not a player");
           this.game = finishHand(this.game);
-          if (this.game.phase === "game_finished") {
-            this.room.finish();
-          }
+          if (this.game.phase === "game_finished") this.room.finish();
           break;
 
+        case "next_hand":
+          this.requireGame();
+          if (!this.game.players.some(player => player.id === userId)) throw new Error("You are not a player");
+          this.game = startNextHand(this.game);
+          break;
+
+        case "state":
         case "create":
-          throw new Error("Room already exists");
+          throw new Error("Invalid action");
       }
 
       await this.save();
@@ -179,13 +241,12 @@ export class GameRoomDurableObject {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const roomId = new URL(request.url).searchParams.get("room");
-    if (!roomId) {
-      return Response.json({ error: "room is required" }, { status: 400 });
-    }
+    if (!roomId) return Response.json({ error: "room is required" }, { status: 400 });
 
     const id = env.GAME_ROOM.idFromName(roomId);
     const headers = new Headers(request.headers);
     headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);
+
     return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
   }
 };
