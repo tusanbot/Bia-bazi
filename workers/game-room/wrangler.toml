@@ -8,7 +8,7 @@ class_name = "GameRoomDurableObject"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["GameRoomDurableObject"]
+new_sqlite_classes = ["GameRoomDurableObject"]
 
 [vars]
 # Set TELEGRAM_BOT_TOKEN with: wrangler secret put TELEGRAM_BOT_TOKEN
