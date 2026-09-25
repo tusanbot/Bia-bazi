@@ -1,6 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import { GameCard } from "../components/GameCard";
 
 export default function Home() {
+  const [hokmMode, setHokmMode] = useState(4);
+
   return (
     <main className="shell">
       <header className="hero">
@@ -32,8 +37,12 @@ export default function Home() {
           subtitle="حکم دو، سه و چهار نفره"
           meta="۲ تا ۴ بازیکن"
           playerModes={[2, 3, 4]}
+          selectedMode={hokmMode}
+          onModeChange={setHokmMode}
         />
       </section>
+
+      <div className="mode-hint">حالت انتخاب‌شده: <strong>حکم {hokmMode} نفره</strong> — قبل از شروع اتاق می‌توان آن را تغییر داد.</div>
 
       <section className="stats">
         <div><b>۰</b><span>بازی</span></div>
