@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { initTelegram, telegramUser } from "../../../../lib/telegram";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
 type Card = { id: string; suit: Suit; rank: number };
@@ -53,6 +54,9 @@ export default function HokmGamePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
+
+  useEffect(() => { initTelegram(); setUser(telegramUser()); }, []);
 
   const playerId = "telegram-user";
 
@@ -76,7 +80,7 @@ export default function HokmGamePage() {
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
