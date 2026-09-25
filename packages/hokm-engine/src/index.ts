@@ -169,7 +169,22 @@ export function chooseHokm(state: HokmState, playerId: PlayerId, suit: Suit): Ho
   }
   const next = structuredClone(state);
   next.hokm = suit;
-  next.phase = next.players.length === 2 ? "build_two_player_hand" : "playing";
+
+  if (next.players.length !== 2) {
+    for (const dealSize of next.rules.followUpDeals) {
+      for (const player of next.players) {
+        for (let i = 0; i < dealSize; i++) {
+          const card = next.deck.shift();
+          if (!card) throw new Error("Deck exhausted while completing the deal");
+          next.hands[player.id].push(card);
+        }
+      }
+    }
+    next.phase = "playing";
+  } else {
+    next.phase = "build_two_player_hand";
+  }
+
   if (next.twoPlayerBuild) {
     next.twoPlayerBuild.phase = "discard";
     next.twoPlayerBuild.currentPlayer = playerId;
