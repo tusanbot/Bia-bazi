@@ -1,0 +1,15 @@
+{
+  "name": "@bia-bazi/game-room-worker",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy" },
+  "dependencies": {
+    "@bia-bazi/game-room": "0.1.0",
+    "@bia-bazi/hokm-engine": "0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "wrangler": "latest",
+    "typescript": "latest"
+  }
+}
