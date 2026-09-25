@@ -88,6 +88,21 @@ export class GameRoom {
     return this.getState();
   }
 
+  setPlayerCount(playerCount: number): GameRoomState {
+    if (this.state.status !== "waiting") {
+      throw new Error("Room mode can only be changed while waiting");
+    }
+    if (playerCount < this.state.config.minPlayers || playerCount > this.state.config.maxPlayers) {
+      throw new Error("Player count is outside the allowed range");
+    }
+    if (playerCount < this.state.players.length) {
+      throw new Error("Cannot reduce player count below the number of joined players");
+    }
+
+    this.state.config.playerCount = playerCount;
+    return this.getState();
+  }
+
   canStart(): boolean {
     return (
       this.state.status === "waiting" &&
