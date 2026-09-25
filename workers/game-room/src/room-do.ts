@@ -5,6 +5,7 @@ import {
   drawTwo,
   playCard,
   finishHand,
+  startNextHand,
   createHokmRoom,
   type HokmPlayerCount,
   type HokmState,
@@ -12,9 +13,9 @@ import {
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 
-export interface Env { GAME_ROOM: DurableObjectNamespace; }
+export interface Env { GAME_ROOM: DurableObjectNamespace; TELEGRAM_BOT_TOKEN: string; }
 
-type PlayerInput = { id: string; displayName: string; username?: string };
+type PlayerInput = { id: string; displayName: string; username?: string };\ntype TelegramUser = { id: number; username?: string; first_name?: string; last_name?: string };\ntype ActionAuth = { initData: string };
 
 type Action =
   | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: PlayerInput }
@@ -27,7 +28,27 @@ type Action =
   | { type: "discard_two"; playerId: string; cardIds: string[] }
   | { type: "draw_two"; playerId: string; keep: boolean }
   | { type: "play_card"; playerId: string; cardId: string }
-  | { type: "finish_hand" };
+  | { type: "finish_hand"; initData: string }\n  | { type: "next_hand"; initData: string };
+
+
+async function verifyTelegramInitData(initData: string, botToken: string): Promise<TelegramUser> {
+  if (!initData) throw new Error("Telegram authentication is required");
+  const params = new URLSearchParams(initData);
+  const received = params.get("hash");
+  const authDate = Number(params.get("auth_date") || 0);
+  if (!received || !authDate || Math.abs(Date.now() / 1000 - authDate) > 86400) throw new Error("Invalid or expired Telegram authentication");
+  const checkString = [...params.entries()].filter(([k]) => k !== "hash").sort(([a], [b]) => a.localeCompare(b)).map(([k,v]) => k + "=" + v).join("\\n");
+  const enc = new TextEncoder();
+  const tokenKey = await crypto.subtle.importKey("raw", enc.encode(botToken), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const secret = await crypto.subtle.sign("HMAC", tokenKey, enc.encode("WebAppData"));
+  const dataKey = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", dataKey, enc.encode(checkString));
+  const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,"0")).join("");
+  if (hex !== received) throw new Error("Invalid Telegram authentication signature");
+  const raw = params.get("user");
+  if (!raw) throw new Error("Telegram user is missing");
+  return JSON.parse(raw) as TelegramUser;
+}
 
 export class GameRoomDurableObject {
   private room?: GameRoom;
@@ -63,7 +84,7 @@ export class GameRoomDurableObject {
           ? { type: "state" }
           : await request.json<Action>();
 
-      if (action.type === "create") {
+      const needsAuth = action.type !== "state";\n      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, this.envToken()) : null;\n\n      if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
         this.room = createHokmRoom(
           this.state.id.toString(),
@@ -143,7 +164,7 @@ export class GameRoomDurableObject {
     }
   }
 
-  private requireGame(): asserts this is this & { game: HokmState } {
+  private envToken() { return (this as unknown as { env: Env }).env.TELEGRAM_BOT_TOKEN; }\n\n  private requireGame(): asserts this is this & { game: HokmState } {
     if (!this.game) throw new Error("Game has not started");
   }
 }
