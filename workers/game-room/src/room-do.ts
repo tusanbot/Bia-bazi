@@ -42,6 +42,7 @@ export class GameRoomDurableObject {
       switch (action.type) {
         case "state": return Response.json(room.getState());
         case "join": room.join(action.player); break;
+        case "change_player_count": room.setPlayerCount(action.playerCount); break;
         case "leave": room.leave(action.playerId); break;
         case "start": room.start(); break;
         case "playing": room.markPlaying(); break;
