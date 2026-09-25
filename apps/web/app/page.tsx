@@ -1,20 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GameCard } from "../components/GameCard";
+import { initTelegram, telegramUser } from "../lib/telegram";
 
 export default function Home() {
   const [hokmMode, setHokmMode] = useState(4);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const router = useRouter();
 
+  useEffect(() => {
+    initTelegram();
+    setUser(telegramUser());
+  }, []);
+
   async function createRoom() {
+    if (!user) {
+      setError("این بازی باید از داخل تلگرام باز شود.");
+      return;
+    }
     setCreating(true);
     setError("");
     try {
       const roomId = crypto.randomUUID();
+      const initData = window.Telegram?.WebApp?.initData ?? "";
       const res = await fetch(`/api/room?room=${roomId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -22,7 +34,8 @@ export default function Home() {
           type: "create",
           gameId: "hokm",
           playerCount: hokmMode,
-          host: { id: "telegram-user", displayName: "بازیکن" }
+          initData,
+          host: { id: String(user.id), displayName: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن", username: user.username }
         })
       });
       const json = await res.json();
@@ -34,6 +47,8 @@ export default function Home() {
       setCreating(false);
     }
   }
+
+  const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "ورود با تلگرام";
 
   return (
     <main className="shell">
@@ -49,10 +64,10 @@ export default function Home() {
       <section className="profile-card">
         <div className="avatar">👤</div>
         <div>
-          <strong>ورود با تلگرام</strong>
-          <span>حساب تلگرام شما به‌صورت امن به بازی متصل می‌شود.</span>
+          <strong>{displayName}</strong>
+          <span>{user ? "حساب تلگرام متصل است." : "این صفحه را از داخل تلگرام باز کنید."}</span>
         </div>
-        <button className="primary">ورود</button>
+        <button className="primary" disabled={!user} onClick={createRoom}>بازی</button>
       </section>
 
       <section>
@@ -74,7 +89,6 @@ export default function Home() {
 
       {creating && <div className="mode-hint">در حال ساخت اتاق...</div>}
       {error && <div className="error">{error}</div>}
-
       <div className="mode-hint">حالت انتخاب‌شده: <strong>حکم {hokmMode} نفره</strong> — قبل از شروع اتاق می‌توان آن را تغییر داد.</div>
 
       <section className="stats">
@@ -84,10 +98,7 @@ export default function Home() {
       </section>
 
       <nav className="bottom-nav">
-        <a className="active">خانه</a>
-        <a>بازی‌ها</a>
-        <a>رتبه‌بندی</a>
-        <a>پروفایل</a>
+        <a className="active">خانه</a><a>بازی‌ها</a><a>رتبه‌بندی</a><a>پروفایل</a>
       </nav>
     </main>
   );
