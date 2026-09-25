@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { initTelegram, telegramUser } from "../../../../lib/telegram";
+import { initTelegram, telegramUser } from "../../../lib/telegram";
 
 type RoomPlayer = {
   id: string;
