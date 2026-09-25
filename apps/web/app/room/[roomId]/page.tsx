@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
 
 type RoomPlayer = {
@@ -29,6 +29,7 @@ export default function RoomPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
 
   useEffect(() => { initTelegram(); setUser(telegramUser()); }, []);
@@ -73,6 +74,10 @@ export default function RoomPage() {
   }
 
   const { room } = data;
+
+  useEffect(() => {
+    if (room.status === "playing") router.replace(`/room/${roomId}/game`);
+  }, [room.status, roomId, router]);
   const isJoined = room.players.some(p => p.id === playerId);
   const isHost = room.hostId === playerId;
   const canChange = room.status === "waiting" && isHost;
