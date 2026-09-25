@@ -4,7 +4,7 @@ import {
   discardTwo,
   drawTwo,
   playCard,
-  finishHand,
+  finishHand,\n  startNextHand,
   startNextHand,
   createHokmRoom,
   type HokmPlayerCount,
