@@ -58,7 +58,7 @@ export default function HokmGamePage() {
 
   useEffect(() => { initTelegram(); setUser(telegramUser()); }, []);
 
-  const playerId = "telegram-user";
+  const playerId = user ? String(user.id) : "";
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, { cache: "no-store" });
