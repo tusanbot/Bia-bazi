@@ -1,11 +1,11 @@
 name = "bia-bazi-game-room"
-main = "src/index.ts"
-compatibility_date = "2026-09-01"
+main = "src/room-do.ts"
+compatibility_date = "2026-09-26"
 
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
-class_name = "GameRoom"
+class_name = "GameRoomDurableObject"
 
 [[migrations]]
-tag = "v1"
-new_sqlite_classes = ["GameRoom"]
+tag = "v2"
+renamed_classes = [{ from = "GameRoom", to = "GameRoomDurableObject" }]
