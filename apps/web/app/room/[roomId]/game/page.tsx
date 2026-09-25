@@ -61,7 +61,11 @@ export default function HokmGamePage() {
   const playerId = user ? String(user.id) : "";
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, { cache: "no-store" });
+    const initData = window.Telegram?.WebApp?.initData ?? "";
+    const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+      cache: "no-store",
+      headers: initData ? { "x-telegram-init-data": initData } : {}
+    });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "خطا در دریافت وضعیت بازی");
     setData(json);
