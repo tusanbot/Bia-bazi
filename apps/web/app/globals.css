@@ -43,3 +43,5 @@ h1 { margin:1px 0 0; font-size:30px; }
 .bottom-nav { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); width:min(650px,calc(100% - 24px)); display:grid; grid-template-columns:repeat(4,1fr); padding:7px; border:1px solid var(--line); border-radius:20px; background:rgba(8,25,23,.92); backdrop-filter:blur(18px); }
 .bottom-nav a { text-align:center; padding:10px 4px; color:var(--muted); font-size:11px; border-radius:14px; }
 .bottom-nav a.active { color:var(--text); background:rgba(32,199,163,.12); }
+.player-modes { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.mode-chip { background:rgba(32,199,163,.08); border:1px solid rgba(32,199,163,.18); color:#8be0d0; border-radius:9px; padding:3px 7px; font-size:9px; cursor:pointer; }
