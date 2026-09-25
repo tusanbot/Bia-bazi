@@ -1,0 +1,15 @@
+name = "bia-bazi-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bia-bazi"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+WEBAPP_URL = "https://games.example.com"
