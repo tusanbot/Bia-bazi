@@ -328,6 +328,18 @@ export function finishHand(state: HokmState): HokmState {
   return next;
 }
 
+export function startNextHand(state: HokmState): HokmState {
+  if (state.phase !== "hand_finished") throw new Error("Hand is not finished");
+  if (Object.values(state.scores).some(score => score >= 7)) throw new Error("Game is already finished");
+  const dealerIndex = state.players.findIndex(p => p.id === state.dealerId);
+  const dealerId = state.players[(dealerIndex + 1) % state.players.length].id;
+  const hokmIndex = state.players.findIndex(p => p.id === dealerId);
+  const hokmPlayerId = state.players[(hokmIndex + 1) % state.players.length].id;
+  const next = buildInitialState(state.players, dealerId, hokmPlayerId);
+  next.scores = structuredClone(state.scores);
+  return next;
+}
+
 export function isLegalMove(state: HokmState, playerId: PlayerId, cardId: string): boolean {
   if (state.phase !== "playing" || state.turnPlayerId !== playerId || !state.hokm) return false;
   const hand = state.hands[playerId] || [];
