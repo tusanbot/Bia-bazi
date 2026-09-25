@@ -84,7 +84,7 @@ export class GameRoomDurableObject {
           ? { type: "state" }
           : await request.json<Action>();
 
-      const needsAuth = action.type !== "state";\n      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, this.envToken()) : null;\n\n      if (action.type === "create") {
+      const needsAuth = action.type !== "state";\n      const authUser = needsAuth ? await verifyTelegramInitData((action as ActionAuth).initData, request.headers.get("x-bia-bot-token") || "") : null;\n\n      if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
         this.room = createHokmRoom(
           this.state.id.toString(),
@@ -164,7 +164,7 @@ export class GameRoomDurableObject {
     }
   }
 
-  private envToken() { return (this as unknown as { env: Env }).env.TELEGRAM_BOT_TOKEN; }\n\n  private requireGame(): asserts this is this & { game: HokmState } {
+  private requireGame(): asserts this is this & { game: HokmState } {
     if (!this.game) throw new Error("Game has not started");
   }
 }
@@ -177,6 +177,6 @@ export default {
     }
 
     const id = env.GAME_ROOM.idFromName(roomId);
-    return env.GAME_ROOM.get(id).fetch(request);
+    const headers = new Headers(request.headers);\n    headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);\n    return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
   }
 };
