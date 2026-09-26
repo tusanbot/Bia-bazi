@@ -113,7 +113,91 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
     .join("");
 
   if (!constantTimeEqual(expectedHash, receivedHash)) {
-    throw new Error("Invalid Telegram authentication signature");
+    // Telegram also provides an Ed25519 signature for third-party validation.
+    // Use it as an independent fallback so a token mismatch can no longer
+    // masquerade as a generic "invalid signature" error.
+    const signature = params.get("signature");
+
+    if (signature) {
+      try {
+        const meResponse = await fetch(
+          `https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`
+        );
+
+        if (!meResponse.ok) {
+          throw new Error("Worker Telegram bot token is invalid");
+        }
+
+        const meJson = await meResponse.json() as {
+          ok?: boolean;
+          result?: { id?: number };
+        };
+
+        const botId = meJson.result?.id;
+        if (!meJson.ok || !botId) {
+          throw new Error("Worker Telegram bot token could not be identified");
+        }
+
+        const signatureCheckString = `${botId}:WebAppData\\n${checkString}`;
+
+        const publicKeyHex =
+          "e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d";
+
+        const hexToBytes = (hex: string) => {
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < bytes.length; i++) {
+            bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+          }
+          return bytes;
+        };
+
+        const base64UrlToBytes = (value: string) => {
+          const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+          const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+          const binary = atob(padded);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          return bytes;
+        };
+
+        const publicKey = await crypto.subtle.importKey(
+          "raw",
+          hexToBytes(publicKeyHex),
+          { name: "Ed25519" },
+          false,
+          ["verify"]
+        );
+
+        const validSignature = await crypto.subtle.verify(
+          "Ed25519",
+          publicKey,
+          base64UrlToBytes(signature),
+          encoder.encode(signatureCheckString)
+        );
+
+        if (!validSignature) {
+          throw new Error(
+            "Telegram authentication failed: the Worker bot token does not match the bot that opened this Mini App, or Telegram initData was modified"
+          );
+        }
+
+        // The Telegram Ed25519 signature is independently valid, so the
+        // Mini App data is authentic even if the bot-token HMAC does not match.
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("Telegram authentication failed:")) {
+          throw error;
+        }
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Telegram authentication failed"
+        );
+      }
+    } else {
+      throw new Error(
+        "Invalid Telegram authentication signature. The Worker TELEGRAM_BOT_TOKEN may belong to a different bot than this Mini App."
+      );
+    }
   }
 
   const rawUser = params.get("user");
