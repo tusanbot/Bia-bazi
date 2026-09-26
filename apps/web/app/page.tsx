@@ -30,6 +30,40 @@ export default function Home() {
 
     setUser(currentUser);
 
+    // A shared room invite uses startapp=room_<roomId>.
+    // Join the exact Durable Object named by the invite instead of creating a new room.
+    if (currentUser && startParam.startsWith("room_")) {
+      const roomId = startParam.slice("room_".length);
+      if (roomId) {
+        setCreating(true);
+        const initData = window.Telegram?.WebApp?.initData ?? "";
+
+        fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "join",
+            initData,
+            player: {
+              id: String(currentUser.id),
+              displayName: [currentUser.first_name, currentUser.last_name].filter(Boolean).join(" ") || currentUser.username || "بازیکن",
+              username: currentUser.username
+            }
+          })
+        })
+          .then(async res => {
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || "ورود به اتاق ناموفق بود");
+            router.replace(`/room?room=${encodeURIComponent(roomId)}`);
+          })
+          .catch(e => {
+            setError(e instanceof Error ? e.message : "ورود به اتاق ناموفق بود");
+            setCreating(false);
+          });
+        return;
+      }
+    }
+
     // A direct Mini App link opened from a group carries chat_instance.
     // All members of that group therefore resolve to the same deterministic room.
     if (
