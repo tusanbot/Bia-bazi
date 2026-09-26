@@ -1,0 +1,11 @@
+# Copy the [[d1_databases]] block into wrangler.toml after creating the D1 database.
+# Create it with:
+#   npx wrangler d1 create bia-bazi --location weur --binding DB
+#
+# Then replace <DATABASE_ID> with the ID returned by Wrangler.
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "bia-bazi"
+# database_id = "<DATABASE_ID>"
+# migrations_dir = "migrations"
