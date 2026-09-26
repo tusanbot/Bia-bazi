@@ -37,7 +37,15 @@ export default function RoomPage() {
   useEffect(() => {
     initTelegram();
     setUser(telegramUser());
-    const room = new URLSearchParams(window.location.search).get("room") ?? "";
+    const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
+    const startParam =
+      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
+      new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
+      "";
+    const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
+    const savedRoom = window.localStorage.getItem("bia-bazi:last-room") ?? "";
+    const room = queryRoom || startRoom || savedRoom;
+    if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
   }, []);
@@ -110,7 +118,7 @@ export default function RoomPage() {
   }
 
   useEffect(() => {
-    if (data?.room.status === "playing") {
+    if (data?.room.status === "playing" || data?.room.status === "finished") {
       router.replace(`/room/game?room=${encodeURIComponent(roomId)}`);
     }
   }, [data?.room.status, roomId, router]);
