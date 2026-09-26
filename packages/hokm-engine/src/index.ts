@@ -312,8 +312,14 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
   if (state.phase !== "playing" || !state.hokm || state.turnPlayerId !== playerId) {
     throw new Error("Invalid play");
   }
+  if (state.turnUnlockAt > Date.now()) {
+    throw new Error("Card selection is temporarily locked");
+  }
 
   const next = structuredClone(state);
+  // The final trick of the previous hand remains visible until the first
+  // card of this hand is actually selected.
+  next.lastCompletedTrick = [];
   const hand = next.hands[playerId];
   const card = hand.find(c => c.id === cardId);
   if (!card) throw new Error("Card not in hand");
@@ -454,6 +460,10 @@ export function startNextHand(state: HokmState): HokmState {
 
   const next = buildInitialState(state.players, dealerId, hokmPlayerId);
   next.scores = structuredClone(state.scores);
+  // Keep the previous hand's final trick visible during the 1-second
+  // transition and until the first card of the new hand is selected.
+  next.lastCompletedTrick = structuredClone(state.lastCompletedTrick);
+  next.turnUnlockAt = Date.now() + 1000;
   return next;
 }
 
