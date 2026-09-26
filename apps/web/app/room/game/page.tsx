@@ -15,6 +15,7 @@ type Game = {
   hands: Record<string, Card[]>;
   trick: Array<{ playerId: string; card: Card }>;
   lastCompletedTrick: Array<{ playerId: string; card: Card }>;
+  turnUnlockAt: number;
   handResultApplied: boolean;
   handWinnerIds: string[];
   handPoints: Record<string, number>;
@@ -58,6 +59,7 @@ export default function HokmGamePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
 
   useEffect(() => {
@@ -77,6 +79,19 @@ export default function HokmGamePage() {
   }, []);
 
   const playerId = user ? String(user.id) : "";
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!currentGame || currentGame.phase !== "hand_finished" || !currentGame.handResultApplied) return;
+    const timer = window.setTimeout(() => {
+      act({ type: "next_hand" });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [currentGame?.phase, currentGame?.handResultApplied]);
+
 
   const refresh = useCallback(async () => {
     const initData = window.Telegram?.WebApp?.initData ?? "";
@@ -136,6 +151,7 @@ export default function HokmGamePage() {
   const game = currentGame;
   const nameOf = (id: string) => game.players.find(p => p.id === id)?.displayName ?? "بازیکن";
   const isMyTurn = game.turnPlayerId === playerId;
+  const turnLocked = game.turnUnlockAt > now;
   const build = game.twoPlayerBuild;
   const mustDiscard = game.phase === "build_two_player_hand" && build?.phase === "discard" && build.currentPlayer === playerId;
   const mustDraw = game.phase === "build_two_player_hand" && build?.phase === "draw" && build.currentPlayer === playerId;
@@ -247,7 +263,7 @@ export default function HokmGamePage() {
         )}
 
         <div className="trick-table">
-          {(game.phase === "hand_finished" || game.phase === "game_finished") && game.lastCompletedTrick?.length
+          {(game.phase === "hand_finished" || game.phase === "game_finished" || game.phase === "playing") && game.lastCompletedTrick?.length
             ? game.lastCompletedTrick.map(play => (
                 <div className="played-card" key={play.playerId}>
                   <small>{nameOf(play.playerId)}</small>
@@ -271,7 +287,7 @@ export default function HokmGamePage() {
             <div className="hand-title"><span>دست شما</span><small>{myHand.length} کارت</small></div>
             <div className="cards">
               {myHand.map(card => {
-                const allowed = playable.has(card.id);
+                const allowed = playable.has(card.id) && !turnLocked;
                 const picked = selected.includes(card.id);
                 return (
                   <button key={card.id} className={`playing-card ${allowed ? "allowed" : "muted"} ${picked ? "picked" : ""}`} disabled={busy || !allowed} onClick={() => act({ type: "play_card", playerId, cardId: card.id })}>
@@ -301,12 +317,7 @@ export default function HokmGamePage() {
         {game.phase === "hand_finished" && (
           <div className="action-panel">
             <h2>این دست تمام شد</h2>
-            {game.lastCompletedTrick?.length > 0 && <p>آخرین کارت‌ها تا اینجا نمایش داده شده‌اند. نتیجه دست: <b>{game.handWinnerIds.map(nameOf).join(" و ")}</b> · {Math.max(...game.handWinnerIds.map(id => game.handPoints[id] ?? 0))} امتیاز</p>}
-            {!game.handResultApplied ? (
-              <button className="primary wide" disabled={busy} onClick={() => act({ type: "finish_hand" })}>ثبت نتیجه دست</button>
-            ) : (
-              <button className="primary wide" disabled={busy} onClick={() => act({ type: "next_hand" })}>شروع دست بعدی</button>
-            )}
+            {game.lastCompletedTrick?.length > 0 && <p>آخرین کارت‌های دست قبل نمایش داده می‌شوند. دست بعدی پس از یک ثانیه آماده می‌شود.</p>}
           </div>
         )}
 
