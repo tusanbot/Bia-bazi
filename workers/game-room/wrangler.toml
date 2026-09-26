@@ -1,6 +1,7 @@
 name = "bia-bazi"
 main = "src/room-do.ts"
-compatibility_date = "2026-09-25"
+compatibility_date = "2026-09-26"
+compatibility_flags = ["nodejs_compat"]
 
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
@@ -10,5 +11,13 @@ class_name = "GameRoomDurableObject"
 tag = "v1"
 new_sqlite_classes = ["GameRoomDurableObject"]
 
+[assets]
+directory = "../../apps/web/out"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
 [vars]
-# Set TELEGRAM_BOT_TOKEN with: wrangler secret put TELEGRAM_BOT_TOKEN
+# Set with: wrangler secret put TELEGRAM_BOT_TOKEN
