@@ -37,7 +37,16 @@ export function telegramUser(): TelegramUser | null {
 }
 
 export function telegramStartParam(): string {
-  return telegramWebApp()?.initDataUnsafe?.start_param ?? "";
+  const fromTelegram = telegramWebApp()?.initDataUnsafe?.start_param ?? "";
+  if (fromTelegram) return fromTelegram;
+
+  // Telegram also exposes tgWebAppStartParam as a GET parameter
+  // when a Mini App is opened through a direct link with startapp.
+  if (typeof window !== "undefined") {
+    return new URLSearchParams(window.location.search).get("tgWebAppStartParam") ?? "";
+  }
+
+  return "";
 }
 
 export function telegramChatInstance(): string {
