@@ -40,7 +40,7 @@ export default function Home() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "ساخت اتاق ناموفق بود");
-      router.push(`/room/${json.room.id}`);
+      router.push(`/room?room=${encodeURIComponent(json.room.id)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "خطای نامشخص");
     } finally {
