@@ -79,7 +79,7 @@ hokm-engine
 - `workers/game-room` → اتاق بازی، احراز هویت Telegram و Durable Object
 - `workers/api` → API قدیمی/کمکی و خارج از مسیر اصلی بازی
 
-Cloudflare برای پروژه‌های Next.js مسیر Workers را پشتیبانی می‌کند و OpenNext می‌تواند خروجی Next.js را به Worker و assetهای قابل استقرار تبدیل کند. citeturn0search1turn0search4
+Cloudflare برای پروژه‌های Next.js مسیر Workers را پشتیبانی می‌کند و OpenNext خروجی Next.js را به Worker و assetهای قابل استقرار تبدیل می‌کند.
 
 ### استقرار Web Worker
 
