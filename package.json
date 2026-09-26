@@ -2,10 +2,16 @@
   "name": "bia-bazi",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*", "packages/*", "workers/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "workers/*"
+  ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:bia-bazi": "npm --workspace apps/web run build",
+    "deploy:bia-bazi": "npm --workspace apps/web run build && npm --workspace workers/game-room run deploy"
   }
 }
