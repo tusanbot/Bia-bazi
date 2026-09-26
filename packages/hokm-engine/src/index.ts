@@ -23,6 +23,8 @@ export interface TwoPlayerBuild {
   discarded: Card[];
   currentPlayer: PlayerId;
   kept: Record<PlayerId, Card[]>;
+  /** The two privately revealed stock cards currently offered to currentPlayer. */
+  drawOptions: Card[];
   phase: "discard" | "draw";
 }
 
@@ -157,6 +159,7 @@ export function buildInitialState(
     base.twoPlayerBuild = {
       stock: [], discarded: [], currentPlayer: hokmPlayerId,
       kept: Object.fromEntries(players.map(p => [p.id, []])),
+      drawOptions: [],
       phase: "discard"
     };
   }
@@ -234,29 +237,27 @@ export function drawTwo(state: HokmState, playerId: PlayerId, keep: boolean): Ho
   if (build.phase !== "draw" || build.currentPlayer !== playerId) {
     throw new Error("Not your draw turn");
   }
+  if (build.drawOptions.length !== 2) {
+    throw new Error("Two stock cards are not currently available");
+  }
 
   const next = structuredClone(state);
-  const card = build.stock[0];
+  const [first, second] = build.drawOptions;
 
-  if (!card) {
-    if (build.kept[next.players[0].id].length === 13 && build.kept[next.players[1].id].length === 13) {
-      next.phase = "playing";
-      next.hands = structuredClone(build.kept);
-      next.turnPlayerId = next.hokmPlayerId;
-      next.leaderId = next.hokmPlayerId;
-      return next;
-    }
-    throw new Error("The two-player stock is exhausted before both hands are complete");
-  }
-
-  build.stock.shift();
-
+  // The player sees two cards but keeps exactly one:
+  // keep=true => keep first, discard second
+  // keep=false => discard first, keep second.
   if (keep) {
-    build.kept[playerId].push(card);
-    next.hands[playerId] = build.kept[playerId];
+    build.kept[playerId].push(first);
+    build.discarded.push(second);
   } else {
-    build.discarded.push(card);
+    build.discarded.push(first);
+    build.kept[playerId].push(second);
   }
+  next.hands[playerId] = structuredClone(build.kept[playerId]);
+
+  build.stock.splice(0, 2);
+  build.drawOptions = [];
 
   const other = next.players.find(p => p.id !== playerId)!.id;
 
@@ -266,10 +267,17 @@ export function drawTwo(state: HokmState, playerId: PlayerId, keep: boolean): Ho
       next.hands = structuredClone(build.kept);
       next.turnPlayerId = next.hokmPlayerId;
       next.leaderId = next.hokmPlayerId;
-    } else {
-      build.currentPlayer = other;
+      return next;
     }
+    build.currentPlayer = other;
+  } else {
+    build.currentPlayer = other;
   }
+
+  if (build.stock.length < 2) {
+    throw new Error("The two-player stock is exhausted before both hands are complete");
+  }
+  build.drawOptions = build.stock.slice(0, 2);
 
   return next;
 }
