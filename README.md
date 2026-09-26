@@ -48,33 +48,105 @@ Inline Mode → انتخاب بازی → ساخت Room → انتشار پیا�
 
 بنابراین نمونه‌های معتبر شامل `۲ → ۳`، `۲ → ۴` و `۴ → ۳` (در صورت حضور حداکثر ۳ بازیکن) هستند. پس از شروع بازی، ظرفیت و حالت اتاق ثابت می‌ماند.
 
+## استقرار روی Cloudflare
 
-## استقرار و اتصال Web به Game Room
+این پروژه به‌صورت کامل روی **Cloudflare Workers** طراحی شده و برای اجرای بخش وب به Vercel وابسته نیست.
 
-برای مسیر بازی، اپ Next.js باید مستقیماً به Worker مربوط به `workers/game-room` متصل شود.
+### معماری استقرار
 
-`GAME_ROOM_URL` در محیط Vercel باید URL همین Worker باشد؛ **نباید URL `workers/api` باشد**.
-
-مسیر درخواست‌ها:
+دو Worker مستقل داریم:
 
 ```
 Telegram Mini App
-  -> Next.js /api/room
-  -> workers/game-room
-  -> GameRoomDurableObject
-  -> hokm-engine
+        │
+        ▼
+bia-bazi-web
+(Next.js + OpenNext)
+        │
+        │ /api/room
+        ▼
+bia-bazi
+(Game Room Worker)
+        │
+        ▼
+GameRoomDurableObject
+        │
+        ▼
+hokm-engine
 ```
 
-Worker مربوط به `game-room` خودش `TELEGRAM_BOT_TOKEN` را به احراز هویت HMAC تلگرام متصل می‌کند. در نتیجه لازم نیست توکن ربات در مرورگر یا در کد Client قرار بگیرد.
+- `apps/web` → رابط کاربری Mini App و Route Handlerهای وب
+- `workers/game-room` → اتاق بازی، احراز هویت Telegram و Durable Object
+- `workers/api` → API قدیمی/کمکی و خارج از مسیر اصلی بازی
 
-### متغیرهای لازم Web
+Cloudflare برای پروژه‌های Next.js مسیر Workers را پشتیبانی می‌کند و OpenNext می‌تواند خروجی Next.js را به Worker و assetهای قابل استقرار تبدیل کند. citeturn0search1turn0search4
 
-- `GAME_ROOM_URL`: آدرس Worker مربوط به `workers/game-room`
+### استقرار Web Worker
 
-### متغیرهای لازم Game Room Worker
+در Cloudflare یک Worker برای `apps/web` با این مشخصات بسازید:
 
-- `TELEGRAM_BOT_TOKEN`: توکن واقعی همان ربات تلگرام
+- **Root directory:** `apps/web`
+- **Build command:** `npm run build` یا استفاده از script آماده `npm run deploy`
+- **Worker name:** `bia-bazi-web`
 
-### نکته مهم
+فایل `apps/web/wrangler.toml` از قبل برای OpenNext تنظیم شده است.
 
-`workers/api` در وضعیت فعلی endpoint احراز هویت کامل بازی نیست و endpoint `/api/auth/telegram` آن هنوز placeholder است. بنابراین قرار دادن URL آن در `GAME_ROOM_URL` باعث خطای احراز هویت می‌شود.
+متغیر زیر را در تنظیمات Worker وب ثبت کنید:
+
+- `GAME_ROOM_URL` → آدرس Worker مربوط به `workers/game-room`
+
+مثال:
+
+```
+GAME_ROOM_URL=https://bia-bazi.<your-subdomain>.workers.dev
+```
+
+### استقرار Game Room Worker
+
+برای Worker بازی:
+
+```bash
+cd workers/game-room
+npm install
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npm run deploy
+```
+
+`TELEGRAM_BOT_TOKEN` باید توکن همان رباتی باشد که Mini App را باز می‌کند.
+
+### استقرار Web
+
+```bash
+cd apps/web
+npm install
+npm run deploy
+```
+
+پس از استقرار، آدرس `bia-bazi-web` نقطه ورود Mini App است؛ آدرس Worker `bia-bazi` مستقیماً برای نمایش رابط کاربری استفاده نمی‌شود و مسئول Game Room است.
+
+### متغیرهای لازم
+
+| Worker | متغیر | کاربرد |
+|---|---|---|
+| `bia-bazi-web` | `GAME_ROOM_URL` | اتصال Web به Game Room |
+| `bia-bazi` | `TELEGRAM_BOT_TOKEN` | اعتبارسنجی HMAC داده Telegram |
+
+توکن ربات هرگز نباید داخل Client یا فایل‌های عمومی Web قرار بگیرد.
+
+### مسیر درخواست بازی
+
+```
+GET  /api/room?room=<roomId>
+POST /api/room?room=<roomId>
+
+Web Worker
+   ↓
+GAME_ROOM_URL
+   ↓
+Game Room Worker
+   ↓
+Durable Object
+```
+
+بنابراین اگر URL مربوط به Game Room را مستقیماً بدون پارامتر `room` باز کنید، پاسخ `{"error":"room is required"}` طبیعی است؛ این Worker یک backend است و صفحه اصلی Mini App را سرو نمی‌کند.
+
