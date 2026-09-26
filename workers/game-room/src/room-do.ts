@@ -77,10 +77,12 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
   const encoder = new TextEncoder();
 
   // Telegram Web Apps validation:
-  // secret_key = HMAC-SHA256(key="WebAppData", message=bot_token)
-  const webAppDataKey = await crypto.subtle.importKey(
+  // secret_key = HMAC-SHA256(key=bot_token, message="WebAppData")
+  // Telegram's current official documentation specifies the bot token as
+  // the HMAC key and the literal "WebAppData" as the message.
+  const botTokenKey = await crypto.subtle.importKey(
     "raw",
-    encoder.encode("WebAppData"),
+    encoder.encode(token),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -88,8 +90,8 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
 
   const secret = await crypto.subtle.sign(
     "HMAC",
-    webAppDataKey,
-    encoder.encode(token)
+    botTokenKey,
+    encoder.encode("WebAppData")
   );
 
   const dataKey = await crypto.subtle.importKey(
