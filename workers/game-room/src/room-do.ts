@@ -44,8 +44,19 @@ function displayName(user: TelegramUser) {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن";
 }
 
+function constantTimeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 async function verifyTelegramInitData(initData: string, botToken: string): Promise<TelegramUser> {
-  if (!botToken) throw new Error("Telegram bot token is not configured on the Worker");
+  const token = botToken.trim();
+
+  if (!token) throw new Error("Telegram bot token is not configured on the Worker");
   if (!initData) throw new Error("Telegram initData is missing; open the game from Telegram");
 
   const params = new URLSearchParams(initData);
@@ -60,18 +71,26 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
     .filter(([key]) => key !== "hash")
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => key + "=" + value)
-    .join(String.fromCharCode(10));
+    .join("\n");
 
   const encoder = new TextEncoder();
-  const tokenKey = await crypto.subtle.importKey(
+
+  // Telegram Web Apps validation:
+  // secret_key = HMAC-SHA256(key="WebAppData", message=bot_token)
+  const webAppDataKey = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(botToken),
+    encoder.encode("WebAppData"),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
   );
 
-  const secret = await crypto.subtle.sign("HMAC", tokenKey, encoder.encode("WebAppData"));
+  const secret = await crypto.subtle.sign(
+    "HMAC",
+    webAppDataKey,
+    encoder.encode(token)
+  );
+
   const dataKey = await crypto.subtle.importKey(
     "raw",
     secret,
@@ -80,19 +99,30 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
     ["sign"]
   );
 
-  const digest = await crypto.subtle.sign("HMAC", dataKey, encoder.encode(checkString));
+  const digest = await crypto.subtle.sign(
+    "HMAC",
+    dataKey,
+    encoder.encode(checkString)
+  );
+
   const expectedHash = [...new Uint8Array(digest)]
     .map(byte => byte.toString(16).padStart(2, "0"))
     .join("");
 
-  if (expectedHash !== receivedHash) {
+  if (!constantTimeEqual(expectedHash, receivedHash)) {
     throw new Error("Invalid Telegram authentication signature");
   }
 
   const rawUser = params.get("user");
   if (!rawUser) throw new Error("Telegram user is missing");
 
-  const user = JSON.parse(rawUser) as TelegramUser;
+  let user: TelegramUser;
+  try {
+    user = JSON.parse(rawUser) as TelegramUser;
+  } catch {
+    throw new Error("Invalid Telegram user data");
+  }
+
   if (!user.id) throw new Error("Telegram user id is missing");
   return user;
 }
@@ -167,6 +197,7 @@ export class GameRoomDurableObject {
 
         return this.response(viewerId);
       }
+
       const telegramUser = await verifyTelegramInitData(action.initData, botToken);
       const userId = String(telegramUser.id);
 
