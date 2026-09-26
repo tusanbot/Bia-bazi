@@ -28,6 +28,7 @@ type TelegramUser = {
 
 type Action =
   | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: unknown; initData: string }
+  | { type: "create_or_join_group"; gameId: "hokm"; playerCount: HokmPlayerCount; initData: string }
   | { type: "state" }
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
@@ -69,7 +70,7 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
 
   const checkString = [...params.entries()]
     .filter(([key]) => key !== "hash")
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
     .map(([key, value]) => key + "=" + value)
     .join("\n");
 
@@ -216,6 +217,29 @@ export class GameRoomDurableObject {
 
         await this.save();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
+      }
+
+      if (action.type === "create_or_join_group") {
+        if (!this.room) {
+          this.room = createHokmRoom(
+            this.state.id.toString(),
+            action.playerCount,
+            {
+              id: userId,
+              displayName: displayName(telegramUser),
+              username: telegramUser.username
+            }
+          );
+        } else {
+          this.room.join({
+            id: userId,
+            displayName: displayName(telegramUser),
+            username: telegramUser.username
+          });
+        }
+
+        await this.save();
+        return Response.json({ room: this.room.getState(), game: null });
       }
 
       if (!this.room) throw new Error("Room does not exist");
