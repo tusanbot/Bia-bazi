@@ -125,7 +125,9 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
         );
 
         if (!meResponse.ok) {
-          throw new Error("Worker Telegram bot token is invalid");
+          throw new Error(
+            "Worker Telegram bot token is rejected by Telegram. Check/replace the TELEGRAM_BOT_TOKEN secret on Cloudflare."
+          );
         }
 
         const meJson = await meResponse.json() as {
