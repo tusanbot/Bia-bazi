@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { initTelegram, telegramUser } from "../../../../lib/telegram";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
@@ -48,8 +47,7 @@ function rankLabel(rank: number) {
 }
 
 export default function HokmGamePage() {
-  const searchParams = useSearchParams();
-  const roomId = searchParams.get("room") ?? "";
+  const [roomId, setRoomId] = useState("");
   const [data, setData] = useState<Payload | null>(null);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -57,7 +55,13 @@ export default function HokmGamePage() {
   const [busy, setBusy] = useState(false);
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
 
-  useEffect(() => { initTelegram(); setUser(telegramUser()); setReady(true); }, []);
+  useEffect(() => {
+    initTelegram();
+    setUser(telegramUser());
+    const room = new URLSearchParams(window.location.search).get("room") ?? "";
+    setRoomId(room);
+    setReady(true);
+  }, []);
 
   const playerId = user ? String(user.id) : "";
 
