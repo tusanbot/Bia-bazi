@@ -31,6 +31,8 @@ export default function RoomPage() {
   const [busy, setBusy] = useState(false);
   const router = useRouter();
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
+  const [inviteLink, setInviteLink] = useState("");
+  const [shareState, setShareState] = useState("");
 
   useEffect(() => {
     initTelegram();
@@ -56,6 +58,11 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!ready || !roomId) return;
+    fetch(`/api/mini-app-link?room=${encodeURIComponent(roomId)}`)
+      .then(res => res.ok ? res.json() : Promise.reject(new Error()))
+      .then(json => setInviteLink(json.url || ""))
+      .catch(() => setInviteLink(""));
+
     refresh().catch(e => setError(e.message));
     const timer = setInterval(() => refresh().catch(e => setError(e.message)), 2000);
     return () => clearInterval(timer);
@@ -86,6 +93,28 @@ export default function RoomPage() {
     }
   }, [data?.room.status, roomId, router]);
 
+  async function shareRoom() {
+    if (!inviteLink) return;
+    const text = "برای ورود به اتاق حکم، این لینک را باز کن:";
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "دعوت به اتاق حکم", text, url: inviteLink });
+        setShareState("لینک دعوت ارسال شد.");
+      } else {
+        await navigator.clipboard.writeText(inviteLink);
+        setShareState("لینک دعوت کپی شد.");
+      }
+    } catch {
+      // User cancellation is intentionally silent.
+    }
+  }
+
+  async function copyInviteLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setShareState("لینک دعوت کپی شد.");
+  }
+
   if (!data) {
     return <main className="shell"><div className="room-panel">در حال بارگذاری اتاق...</div>{error && <p className="error">{error}</p>}</main>;
   }
@@ -113,6 +142,20 @@ export default function RoomPage() {
         </div>
 
         <div className="section-title"><h2>بازیکنان</h2><span>{room.players.length} / {room.config.playerCount}</span></div>
+
+        {room.status === "waiting" && (
+          <div className="invite-panel">
+            <div>
+              <strong>دوستت را به بازی دعوت کن</strong>
+              <span>با لینک زیر مستقیم وارد همین اتاق می‌شود.</span>
+            </div>
+            <div className="invite-actions">
+              <button className="primary" disabled={!inviteLink} onClick={shareRoom}>دعوت بازیکن</button>
+              <button className="secondary" disabled={!inviteLink} onClick={copyInviteLink}>کپی لینک</button>
+            </div>
+            {shareState && <small>{shareState}</small>}
+          </div>
+        )}
 
         <div className="players-list">
           {room.players.map(player => (
