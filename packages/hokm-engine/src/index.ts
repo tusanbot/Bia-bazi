@@ -207,14 +207,17 @@ export function discardTwo(state: HokmState, playerId: PlayerId, cardIds: string
     throw new Error(`You must discard exactly ${required} cards`);
   }
 
-  const build = state.twoPlayerBuild!;
-  if (build.phase !== "discard" || build.currentPlayer !== playerId) {
+  const stateBuild = state.twoPlayerBuild!;
+  if (stateBuild.phase !== "discard" || stateBuild.currentPlayer !== playerId) {
     throw new Error("Not your discard turn");
   }
 
-  if (new Set(cardIds).size !== 2) throw new Error("Exactly two different cards are required");
+  if (new Set(cardIds).size !== required) {
+    throw new Error(`Exactly ${required} different cards are required`);
+  }
 
   const next = structuredClone(state);
+  const build = next.twoPlayerBuild!;
   const hand = next.hands[playerId];
   if (cardIds.some(id => !hand.some(c => c.id === id))) throw new Error("Card not in hand");
 
@@ -240,15 +243,16 @@ export function drawTwo(state: HokmState, playerId: PlayerId, keep: boolean): Ho
     throw new Error("Invalid two-player draw");
   }
 
-  const build = state.twoPlayerBuild!;
-  if (build.phase !== "draw" || build.currentPlayer !== playerId) {
+  const stateBuild = state.twoPlayerBuild!;
+  if (stateBuild.phase !== "draw" || stateBuild.currentPlayer !== playerId) {
     throw new Error("Not your draw turn");
   }
-  if (build.drawOptions.length !== 2) {
+  if (stateBuild.drawOptions.length !== 2) {
     throw new Error("Two stock cards are not currently available");
   }
 
   const next = structuredClone(state);
+  const build = next.twoPlayerBuild!;
   const [first, second] = build.drawOptions;
 
   // The player sees two cards but keeps exactly one:
