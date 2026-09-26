@@ -37,6 +37,11 @@ export interface HokmState {
   phase: Phase;
   hands: Record<PlayerId, Card[]>;
   trick: Array<{ playerId: PlayerId; card: Card }>;
+  /** The most recently completed trick, kept visible during the hand/game result pause. */
+  lastCompletedTrick: Array<{ playerId: PlayerId; card: Card }>;
+  handResultApplied: boolean;
+  handWinnerIds: PlayerId[];
+  handPoints: Record<PlayerId, number>;
   tricksWon: Record<PlayerId, number>;
   teamTricks: Record<string, number>;
   scores: Record<PlayerId, number>;
@@ -148,6 +153,10 @@ export function buildInitialState(
   const base: HokmState = {
     rules, players, dealerId, hokmPlayerId, phase: "select_hokm", hands,
     trick: [],
+    lastCompletedTrick: [],
+    handResultApplied: false,
+    handWinnerIds: [],
+    handPoints: {},
     tricksWon: Object.fromEntries(players.map(p => [p.id, 0])),
     teamTricks: Object.fromEntries(rules.teams.map(t => [t.id, 0])),
     scores: Object.fromEntries(players.map(p => [p.id, 0])),
@@ -321,7 +330,9 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
     return next;
   }
 
+  const completedTrick = structuredClone(next.trick);
   const winner = trickWinner(next.trick, next.hokm);
+  next.lastCompletedTrick = completedTrick;
   next.tricksWon[winner]++;
   next.teamTricks[teamForPlayer(next.teams, winner).id]++;
   next.trick = [];
@@ -358,7 +369,10 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
 
 export function finishHand(state: HokmState): HokmState {
   if (state.phase !== "hand_finished") throw new Error("Hand is not finished");
+  if (state.handResultApplied) throw new Error("Hand result has already been recorded");
   const next = structuredClone(state);
+
+  next.handPoints = Object.fromEntries(next.players.map(player => [player.id, 0]));
 
   if (next.players.length === 4) {
     const hokmTeam = teamForPlayer(next.teams, next.hokmPlayerId);
@@ -371,7 +385,11 @@ export function finishHand(state: HokmState): HokmState {
       winningTricks === 7 && hokmTricks === 0 && winningTeam.id !== hokmTeam.id ? 3 :
       winningTricks === 7 && hokmTricks === 0 ? 2 :
       1;
-    for (const id of winningTeam.playerIds) next.scores[id] += points;
+    for (const id of winningTeam.playerIds) {
+      next.scores[id] += points;
+      next.handPoints[id] = points;
+    }
+    next.handWinnerIds = [...winningTeam.playerIds];
   } else if (next.players.length === 2) {
     const winner = next.players.reduce((best, player) =>
       next.tricksWon[player.id] > next.tricksWon[best.id] ? player : best
@@ -384,6 +402,8 @@ export function finishHand(state: HokmState): HokmState {
       winnerTricks === 7 && opponentTricks === 0 ? 2 :
       1;
     next.scores[winner.id] += points;
+    next.handPoints[winner.id] = points;
+    next.handWinnerIds = [winner.id];
   } else {
     const values = next.players.map(player => ({
       player,
@@ -403,8 +423,11 @@ export function finishHand(state: HokmState): HokmState {
         ? (winner.id === next.hokmPlayerId ? 2 : 3)
         : 1;
     next.scores[winner.id] += points;
+    next.handPoints[winner.id] = points;
+    next.handWinnerIds = [winner.id];
   }
 
+  next.handResultApplied = true;
   if (Object.values(next.scores).some(score => score >= 7)) next.phase = "game_finished";
   return next;
 }
