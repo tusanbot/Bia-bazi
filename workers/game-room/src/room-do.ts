@@ -620,7 +620,7 @@ export class GameRoomDurableObject {
     }
   }
 
- asserts this is this & { game: HokmState } {  private requireGame():
+  private requireGame(): asserts this is this & { game: HokmState } {
     if (!this.game) throw new Error("Game has not started");
   }
 }
