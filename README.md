@@ -142,3 +142,14 @@ https://bia-bazi.<subdomain>.workers.dev/
 ### نکته
 
 در نسخه قبلی Web و Game Room جدا در نظر گرفته شده بودند. ساختار نهایی پروژه اکنون عمداً به یک Worker واحد برگشته است تا Deployment فعلی Cloudflare تو با Binding `GAME_ROOM` سازگار بماند.
+
+
+### اتاق‌های فعال و لینک دعوت
+
+اتاق‌های در انتظار شروع در یک Durable Object رجیستری مرکزی با شناسه ثابت `__room_registry__` ثبت می‌شوند. این رجیستری فقط discovery را انجام می‌دهد و state لحظه‌ای هر بازی همچنان داخل Durable Object اختصاصی همان اتاق باقی می‌ماند. این جداسازی باعث می‌شود API فهرست اتاق‌ها بعداً بتواند بدون تغییر رابط کاربری به D1 منتقل شود.
+
+لینک دعوت از نوع Main Mini App Telegram ساخته می‌شود:
+
+`https://t.me/<bot_username>?startapp=room_<room_id>`
+
+Telegram مقدار `startapp` را به‌عنوان `start_param` به Mini App تحویل می‌دهد و برنامه با همان شناسه دقیق Durable Object وارد اتاق می‌شود.
