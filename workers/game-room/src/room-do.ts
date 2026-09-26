@@ -642,6 +642,16 @@ export default {
       });
     }
 
+    if (url.pathname === "/api/ranking") {
+      const initData = request.headers.get("x-telegram-init-data") || "";
+      if (!initData) return Response.json({ error: "Telegram authentication required" }, { status: 401 });
+      const registryId = env.GAME_ROOM.idFromName("__room_registry__");
+      return env.GAME_ROOM.get(registryId).fetch("https://internal/registry?view=ranking", {
+        method: "GET",
+        headers: { "x-telegram-init-data": initData, "x-room-registry-request": "1" }
+      });
+    }
+
     if (url.pathname === "/api/mini-app-link") {
       const roomId = url.searchParams.get("room") || "";
       if (!roomId) return Response.json({ error: "room is required" }, { status: 400 });
