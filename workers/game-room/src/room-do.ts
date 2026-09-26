@@ -19,6 +19,16 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
 }
 
+type ActiveRoom = {
+  id: string;
+  gameId: string;
+  playerCount: number;
+  currentPlayers: number;
+  hostName: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 type TelegramUser = {
   id: number;
   username?: string;
@@ -39,7 +49,8 @@ type Action =
   | { type: "draw_two"; playerId: string; keep: boolean; initData: string }
   | { type: "play_card"; playerId: string; cardId: string; initData: string }
   | { type: "finish_hand"; initData: string }
-  | { type: "next_hand"; initData: string };
+  | { type: "next_hand"; initData: string }
+  | { type: "list_rooms"; initData: string };
 
 function displayName(user: TelegramUser) {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن";
@@ -228,7 +239,7 @@ export class GameRoomDurableObject {
   private room?: GameRoom;
   private game?: HokmState;
 
-  constructor(private state: DurableObjectState) {}
+  constructor(private state: DurableObjectState, private env: Env) {}
 
   private async load() {
     if (this.room) return this.room;
@@ -242,6 +253,33 @@ export class GameRoomDurableObject {
     if (!this.room) throw new Error("Room does not exist");
     await this.state.storage.put("room", this.room.getState());
     if (this.game) await this.state.storage.put("game", this.game);
+  }
+
+  private async syncRegistry() {
+    if (!this.room || this.state.id.toString() === "__room_registry__") return;
+    try {
+      const state = this.room.getState();
+      const registryId = this.env.GAME_ROOM.idFromName("__room_registry__");
+      const registry = this.env.GAME_ROOM.get(registryId);
+      const payload: ActiveRoom | null = state.status === "waiting"
+        ? {
+            id: state.id,
+            gameId: state.config.gameId,
+            playerCount: state.config.playerCount,
+            currentPlayers: state.players.length,
+            hostName: state.players.find(p => p.id === state.hostId)?.displayName || "میزبان",
+            createdAt: state.createdAt,
+            updatedAt: Date.now()
+          }
+        : null;
+      await registry.fetch("https://internal/registry", {
+        method: "POST",
+        headers: { "x-room-registry-token": this.env.TELEGRAM_BOT_TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({ type: "sync", room: payload, roomId: state.id })
+      });
+    } catch {
+      // The live game must remain available even if the discovery registry is temporarily unavailable.
+    }
   }
 
   private response(viewerId?: string) {
@@ -275,6 +313,30 @@ export class GameRoomDurableObject {
   async fetch(request: Request): Promise<Response> {
     try {
       const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
+
+      if (this.state.id.toString() === "__room_registry__") {
+        if (request.method === "POST" && request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN) {
+          const body = await request.json<{ type: "sync"; room: ActiveRoom | null; roomId: string }>();
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          if (body.room) rooms[body.room.id] = body.room;
+          else delete rooms[body.roomId];
+          await this.state.storage.put("rooms", rooms);
+          return Response.json({ ok: true });
+        }
+
+        if (request.method === "GET") {
+          const initData = request.headers.get("x-telegram-init-data") || "";
+          await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          const active = Object.values(rooms)
+            .filter(room => Date.now() - room.updatedAt < 30 * 60 * 1000)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+          return Response.json({ rooms: active });
+        }
+
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+
       await this.load();
 
       const action: Action = request.method === "GET"
@@ -299,6 +361,10 @@ export class GameRoomDurableObject {
       const telegramUser = await verifyTelegramInitData(action.initData, botToken);
       const userId = String(telegramUser.id);
 
+      if (action.type === "list_rooms") {
+        throw new Error("Room list is served by the registry endpoint");
+      }
+
       if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
 
@@ -313,6 +379,7 @@ export class GameRoomDurableObject {
         );
 
         await this.save();
+        await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
       }
 
@@ -336,6 +403,7 @@ export class GameRoomDurableObject {
         }
 
         await this.save();
+        await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null });
       }
 
@@ -412,6 +480,7 @@ export class GameRoomDurableObject {
       }
 
       await this.save();
+      await this.syncRegistry();
       return this.response(userId);
     } catch (error) {
       return Response.json(
@@ -433,6 +502,32 @@ export default {
     // The same Worker serves both the Mini App and the game backend.
     // All /api/room traffic is routed to the Durable Object; everything
     // else is served from the Next.js static export.
+    if (url.pathname === "/api/rooms") {
+      const initData = request.headers.get("x-telegram-init-data") || "";
+      if (!initData) return Response.json({ error: "Telegram authentication required" }, { status: 401 });
+      const registryId = env.GAME_ROOM.idFromName("__room_registry__");
+      return env.GAME_ROOM.get(registryId).fetch("https://internal/registry", {
+        method: "GET",
+        headers: { "x-telegram-init-data": initData }
+      });
+    }
+
+    if (url.pathname === "/api/mini-app-link") {
+      const roomId = url.searchParams.get("room") || "";
+      if (!roomId) return Response.json({ error: "room is required" }, { status: 400 });
+      const response = await fetch(
+        `https://api.telegram.org/bot${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/getMe`
+      );
+      const json = await response.json() as { ok?: boolean; result?: { username?: string } };
+      const username = json.result?.username;
+      if (!response.ok || !json.ok || !username) {
+        return Response.json({ error: "Telegram bot username could not be resolved" }, { status: 502 });
+      }
+      return Response.json({
+        url: `https://t.me/${username}?startapp=${encodeURIComponent(`room_${roomId}`)}`
+      });
+    }
+
     if (url.pathname === "/api/room") {
       const roomId = url.searchParams.get("room");
       if (!roomId) {
