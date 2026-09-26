@@ -319,7 +319,7 @@ export class GameRoomDurableObject {
       if (action.type === "create_or_join_group") {
         if (!this.room) {
           this.room = createHokmRoom(
-            this.state.id.toString(),
+            requestedRoomId,
             action.playerCount,
             {
               id: userId,
