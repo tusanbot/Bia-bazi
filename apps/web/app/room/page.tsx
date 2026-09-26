@@ -47,7 +47,9 @@ export default function RoomPage() {
 
   const refresh = useCallback(async () => {
     const initData = window.Telegram?.WebApp?.initData ?? "";
-    const headers = initData ? { "x-telegram-init-data": initData } : {};
+    const headers: HeadersInit = {};
+    if (initData) headers["x-telegram-init-data"] = initData;
+
     const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
       cache: "no-store",
       headers
