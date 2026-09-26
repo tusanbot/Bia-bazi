@@ -24,6 +24,7 @@ type Game = {
     currentPlayer: string;
     kept: Record<string, Card[]>;
     phase: "discard" | "draw";
+    drawOptions: Card[];
   };
   turnPlayerId: string;
   leaderId: string;
@@ -126,12 +127,13 @@ export default function HokmGamePage() {
   const build = game.twoPlayerBuild;
   const mustDiscard = game.phase === "build_two_player_hand" && build?.phase === "discard" && build.currentPlayer === playerId;
   const mustDraw = game.phase === "build_two_player_hand" && build?.phase === "draw" && build.currentPlayer === playerId;
+  const discardCount = playerId === game.hokmPlayerId ? 3 : 2;
 
   function toggleCard(card: Card) {
     if (game.phase !== "build_two_player_hand" || !mustDiscard) return;
     setSelected(current => current.includes(card.id)
       ? current.filter(id => id !== card.id)
-      : current.length < 2 ? [...current, card.id] : current);
+      : current.length < discardCount ? [...current, card.id] : current);
   }
 
   return (
@@ -179,9 +181,35 @@ export default function HokmGamePage() {
 
         {game.phase === "build_two_player_hand" && (
           <div className="action-panel">
-            <h2>{mustDiscard ? "۲ کارت را کنار بگذارید" : mustDraw ? "کارت بکشید" : `در انتظار ${nameOf(build?.currentPlayer ?? "")}`}</h2>
-            {mustDiscard && <button className="primary wide" disabled={busy || selected.length !== 2} onClick={() => act({ type: "discard_two", playerId, cardIds: selected })}>کنار گذاشتن ۲ کارت</button>}
-            {mustDraw && <div className="draw-actions"><button className="primary" disabled={busy} onClick={() => act({ type: "draw_two", playerId, keep: true })}>بردار</button><button className="secondary" disabled={busy} onClick={() => act({ type: "draw_two", playerId, keep: false })}>رد کن</button></div>}
+            <h2>{mustDiscard ? (discardCount === 3 ? "۳ کارت را کنار بگذارید" : "۲ کارت را کنار بگذارید") : mustDraw ? "یکی از دو کارت را انتخاب کنید" : `در انتظار ${nameOf(build?.currentPlayer ?? "")}`}</h2>
+            {mustDiscard && <button className="primary wide" disabled={busy || selected.length !== discardCount} onClick={() => act({ type: "discard_two", playerId, cardIds: selected })}>کنار گذاشتن {discardCount} کارت</button>}
+            {mustDraw && (
+              <>
+                <p>دو کارت به شما نشان داده شده؛ فقط یکی را نگه می‌دارید.</p>
+                <div className="draw-options">
+                  {(build?.drawOptions ?? []).map((card, index) => (
+                    <button key={card.id} className="playing-card allowed" disabled={busy} onClick={() => act({ type: "draw_two", playerId, keep: index === 0 })}>
+                      <span className={card.suit === "hearts" || card.suit === "diamonds" ? "red" : ""}>{rankLabel(card.rank)}</span>
+                      <b className={card.suit === "hearts" || card.suit === "diamonds" ? "red" : ""}>{suitMeta[card.suit].symbol}</b>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {game.phase === "select_hokm" && game.hokmPlayerId === playerId && (
+          <div className="hand-area">
+            <div className="hand-title"><span>۵ کارت اولیه شما</span><small>حکم را فقط بر اساس همین ۵ کارت انتخاب کنید</small></div>
+            <div className="cards">
+              {myHand.map(card => (
+                <div key={card.id} className="playing-card allowed">
+                  <span className={card.suit === "hearts" || card.suit === "diamonds" ? "red" : ""}>{rankLabel(card.rank)}</span>
+                  <b className={card.suit === "hearts" || card.suit === "diamonds" ? "red" : ""}>{suitMeta[card.suit].symbol}</b>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -211,7 +239,7 @@ export default function HokmGamePage() {
 
         {game.phase === "build_two_player_hand" && mustDiscard && (
           <div className="hand-area">
-            <div className="hand-title"><span>۵ کارت اولیه</span><small>{selected.length} / ۲ انتخاب</small></div>
+            <div className="hand-title"><span>۵ کارت اولیه</span><small>{selected.length} / {discardCount} انتخاب</small></div>
             <div className="cards">
               {myHand.map(card => (
                 <button key={card.id} className={selected.includes(card.id) ? "playing-card allowed picked" : "playing-card allowed"} onClick={() => toggleCard(card)}>
