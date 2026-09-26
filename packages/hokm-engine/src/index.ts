@@ -323,8 +323,28 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
   next.turnPlayerId = winner;
 
   const total = Object.values(next.tricksWon).reduce((a,b) => a+b, 0);
-  if (Object.values(next.tricksWon).some(n => n >= 7) || total === 13 || total === 17) {
-    next.phase = "hand_finished";
+
+  if (next.players.length === 2 || next.players.length === 4) {
+    // In 2-player and 4-player Hokm, the first side/player to reach 7 tricks
+    // wins the hand immediately.
+    if (Object.values(next.tricksWon).some(n => n >= 7) || total === 13) {
+      next.phase = "hand_finished";
+    }
+  } else if (next.players.length === 3) {
+    // Three-player Hokm has no simple "first to 7" rule unless that lead
+    // cannot be caught. A 7-4-4 position is already decisive, while 7-4-3
+    // is not. If all 17 tricks are played, a tie for the highest total means
+    // the third player (the lower total) wins the hand.
+    if (total === 17) {
+      next.phase = "hand_finished";
+    } else {
+      const remaining = 17 - total;
+      const values = next.players.map(p => next.tricksWon[p.id]);
+      const decisive = values.some(value =>
+        values.every(other => value > other + remaining)
+      );
+      if (decisive) next.phase = "hand_finished";
+    }
   }
 
   return next;
@@ -335,12 +355,48 @@ export function finishHand(state: HokmState): HokmState {
   const next = structuredClone(state);
 
   if (next.players.length === 4) {
-    const ranked = next.teams.slice().sort((a,b) => next.teamTricks[b.id] - next.teamTricks[a.id]);
-    const points = next.teamTricks[ranked[0].id] === 13 || next.teamTricks[ranked[1].id] === 0 ? 2 : 1;
-    for (const id of ranked[0].playerIds) next.scores[id] += points;
+    const hokmTeam = teamForPlayer(next.teams, next.hokmPlayerId);
+    const winningTeam = next.teams.reduce((best, team) =>
+      next.teamTricks[team.id] > next.teamTricks[best.id] ? team : best
+    );
+    const winningTricks = next.teamTricks[winningTeam.id];
+    const hokmTricks = next.teamTricks[hokmTeam.id];
+    const points =
+      winningTricks === 7 && hokmTricks === 0 && winningTeam.id !== hokmTeam.id ? 3 :
+      winningTricks === 7 && hokmTricks === 0 ? 2 :
+      1;
+    for (const id of winningTeam.playerIds) next.scores[id] += points;
+  } else if (next.players.length === 2) {
+    const winner = next.players.reduce((best, player) =>
+      next.tricksWon[player.id] > next.tricksWon[best.id] ? player : best
+    );
+    const winnerTricks = next.tricksWon[winner.id];
+    const opponent = next.players.find(player => player.id !== winner.id)!;
+    const opponentTricks = next.tricksWon[opponent.id];
+    const points =
+      winnerTricks === 7 && opponentTricks === 0 && winner.id !== next.hokmPlayerId ? 3 :
+      winnerTricks === 7 && opponentTricks === 0 ? 2 :
+      1;
+    next.scores[winner.id] += points;
   } else {
-    const winner = next.players.slice().sort((a,b) => next.tricksWon[b.id] - next.tricksWon[a.id])[0];
-    next.scores[winner.id] += 1;
+    const values = next.players.map(player => ({
+      player,
+      tricks: next.tricksWon[player.id]
+    }));
+    const max = Math.max(...values.map(v => v.tricks));
+    const leaders = values.filter(v => v.tricks === max);
+    const winner = leaders.length === 1
+      ? leaders[0].player
+      : values.find(v => v.tricks < max)!.player;
+    const winnerTricks = next.tricksWon[winner.id];
+    const allOthersZero = next.players
+      .filter(player => player.id !== winner.id)
+      .every(player => next.tricksWon[player.id] === 0);
+    const points =
+      winnerTricks === 7 && allOthersZero
+        ? (winner.id === next.hokmPlayerId ? 2 : 3)
+        : 1;
+    next.scores[winner.id] += points;
   }
 
   if (Object.values(next.scores).some(score => score >= 7)) next.phase = "game_finished";
@@ -350,10 +406,23 @@ export function finishHand(state: HokmState): HokmState {
 export function startNextHand(state: HokmState): HokmState {
   if (state.phase !== "hand_finished") throw new Error("Hand is not finished");
   if (Object.values(state.scores).some(score => score >= 7)) throw new Error("Game is already finished");
-  const dealerIndex = state.players.findIndex(p => p.id === state.dealerId);
-  const dealerId = state.players[(dealerIndex + 1) % state.players.length].id;
-  const hokmIndex = state.players.findIndex(p => p.id === dealerId);
-  const hokmPlayerId = state.players[(hokmIndex + 1) % state.players.length].id;
+  let dealerId = state.dealerId;
+  let hokmPlayerId = state.hokmPlayerId;
+
+  const winnerId = state.players.reduce((best, player) =>
+    state.tricksWon[player.id] > state.tricksWon[best.id] ? player : best
+  ).id;
+
+  // Standard rotation: the Hakem keeps the role after winning the hand.
+  // When the Hakem loses, the old Hakem deals and the opponent becomes Hakem
+  // (for 2 players); for 3 players the old Hakem deals and the player to his
+  // right becomes Hakem.
+  if (winnerId !== state.hokmPlayerId) {
+    dealerId = state.hokmPlayerId;
+    const hakemIndex = state.players.findIndex(p => p.id === state.hokmPlayerId);
+    hokmPlayerId = state.players[(hakemIndex + 1) % state.players.length].id;
+  }
+
   const next = buildInitialState(state.players, dealerId, hokmPlayerId);
   next.scores = structuredClone(state.scores);
   return next;
