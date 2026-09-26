@@ -542,7 +542,8 @@ export class GameRoomDurableObject {
           });
         }
 
-        await this.save();
+        await this.persistRoom();
+      await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null });
       }
@@ -623,6 +624,7 @@ export class GameRoomDurableObject {
           throw new Error("Invalid action");
       }
 
+      await this.persistRoom();
       await this.save();
       await this.syncRegistry();
       return this.response(userId);
