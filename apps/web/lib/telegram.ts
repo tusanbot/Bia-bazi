@@ -7,7 +7,12 @@ export type TelegramUser = {
 
 type TelegramWebApp = {
   initData: string;
-  initDataUnsafe?: { user?: TelegramUser };
+  initDataUnsafe?: {
+    user?: TelegramUser;
+    start_param?: string;
+    chat_type?: string;
+    chat_instance?: string;
+  };
   ready?: () => void;
   expand?: () => void;
 };
@@ -29,6 +34,18 @@ export function telegramInitData(): string {
 
 export function telegramUser(): TelegramUser | null {
   return telegramWebApp()?.initDataUnsafe?.user ?? null;
+}
+
+export function telegramStartParam(): string {
+  return telegramWebApp()?.initDataUnsafe?.start_param ?? "";
+}
+
+export function telegramChatInstance(): string {
+  return telegramWebApp()?.initDataUnsafe?.chat_instance ?? "";
+}
+
+export function telegramChatType(): string {
+  return telegramWebApp()?.initDataUnsafe?.chat_type ?? "";
 }
 
 export function telegramHeaders(): HeadersInit {
