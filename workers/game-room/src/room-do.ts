@@ -27,6 +27,32 @@ type ActiveRoom = {
   hostName: string;
   createdAt: number;
   updatedAt: number;
+  status: "waiting" | "playing" | "finished";
+};
+
+type PlayerStats = {
+  playerId: string;
+  displayName: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  score: number;
+  rating: number;
+  currentStreak: number;
+  bestStreak: number;
+  updatedAt: number;
+};
+
+type GameResultRecord = {
+  roomId: string;
+  gameId: string;
+  playerId: string;
+  displayName: string;
+  placement: number;
+  score: number;
+  scoreDelta: number;
+  won: boolean;
 };
 
 type TelegramUser = {
@@ -261,7 +287,7 @@ export class GameRoomDurableObject {
       const state = this.room.getState();
       const registryId = this.env.GAME_ROOM.idFromName("__room_registry__");
       const registry = this.env.GAME_ROOM.get(registryId);
-      const payload: ActiveRoom | null = state.status === "waiting"
+          const payload: ActiveRoom | null = ["waiting", "playing", "finished"].includes(state.status)
         ? {
             id: state.id,
             gameId: state.config.gameId,
@@ -269,7 +295,8 @@ export class GameRoomDurableObject {
             currentPlayers: state.players.length,
             hostName: state.players.find(p => p.id === state.hostId)?.displayName || "میزبان",
             createdAt: state.createdAt,
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            status: state.status as ActiveRoom["status"]
           }
         : null;
       await registry.fetch("https://internal/registry", {
@@ -325,7 +352,59 @@ export class GameRoomDurableObject {
 
       if (isRegistryRequest) {
         if (request.method === "POST" && request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN) {
-          const body = await request.json<{ type: "sync"; room: ActiveRoom | null; roomId: string }>();
+          const body = await request.json<
+            | { type: "sync"; room: ActiveRoom | null; roomId: string }
+            | { type: "record_result"; result: GameResultRecord }
+          >();
+
+          if (body.type === "record_result") {
+            const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
+            const key = body.result.playerId;
+            const existing = stats[key] || {
+              playerId: key,
+              displayName: body.result.displayName,
+              gamesPlayed: 0,
+              wins: 0,
+              losses: 0,
+              draws: 0,
+              score: 0,
+              rating: 1000,
+              currentStreak: 0,
+              bestStreak: 0,
+              updatedAt: Date.now()
+            };
+
+            // The same player result can only be applied once per room.
+            const resultKeys = (await this.state.storage.get<Record<string, true>>("recorded_results")) || {};
+            const resultKey = body.result.roomId + ":" + body.result.playerId;
+            if (!resultKeys[resultKey]) {
+              existing.displayName = body.result.displayName || existing.displayName;
+              existing.gamesPlayed += 1;
+              existing.score += body.result.scoreDelta;
+              existing.rating += body.result.won ? 10 : -5;
+              if (body.result.won) {
+                existing.wins += 1;
+                existing.currentStreak += 1;
+                existing.bestStreak = Math.max(existing.bestStreak, existing.currentStreak);
+              } else {
+                existing.losses += 1;
+                existing.currentStreak = 0;
+              }
+              existing.updatedAt = Date.now();
+              stats[key] = existing;
+              resultKeys[resultKey] = true;
+              await this.state.storage.put("player_stats", stats);
+              await this.state.storage.put("recorded_results", resultKeys);
+            }
+            return Response.json({ ok: true, stats: existing });
+          }
+
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          if (body.room) rooms[body.room.id] = body.room;
+          else delete rooms[body.roomId];
+          await this.state.storage.put("rooms", rooms);
+          return Response.json({ ok: true });
+        }
           const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
           if (body.room) rooms[body.room.id] = body.room;
           else delete rooms[body.roomId];
@@ -338,9 +417,17 @@ export class GameRoomDurableObject {
           await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
           const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
           const active = Object.values(rooms)
-            .filter(room => Date.now() - room.updatedAt < 30 * 60 * 1000)
+            .filter(room => Date.now() - room.updatedAt < 24 * 60 * 60 * 1000)
             .sort((a, b) => b.updatedAt - a.updatedAt);
           return Response.json({ rooms: active });
+        }
+
+        if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "ranking") {
+          const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
+          const ranking = Object.values(stats)
+            .sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.score - a.score)
+            .slice(0, 100);
+          return Response.json({ ranking });
         }
 
         return Response.json({ error: "Not found" }, { status: 404 });
@@ -440,7 +527,7 @@ export class GameRoomDurableObject {
         case "start": {
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
-          const players = this.room.getState().players.map(({ id, seat }) => ({ id, seat }));
+          const players = this.room.getState().players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
           this.game = buildInitialState(players, userId, userId);
           this.room.markPlaying();
           break;
@@ -470,12 +557,17 @@ export class GameRoomDurableObject {
           this.game = playCard(this.game, userId, action.cardId);
           break;
 
-        case "finish_hand":
+        case "finish_hand": {
           this.requireGame();
           if (!this.game.players.some(player => player.id === userId)) throw new Error("You are not a player");
           this.game = finishHand(this.game);
-          if (this.game.phase === "game_finished") this.room.finish();
+
+          if (this.game.phase === "game_finished") {
+            this.room.finish();
+            await this.recordFinalResult(this.game);
+          }
           break;
+        }
 
         case "next_hand":
           this.requireGame();
@@ -499,7 +591,40 @@ export class GameRoomDurableObject {
     }
   }
 
-  private requireGame(): asserts this is this & { game: HokmState } {
+  private async recordFinalResult(game: HokmState) {
+    const registryId = this.env.GAME_ROOM.idFromName("__room_registry__");
+    const registry = this.env.GAME_ROOM.get(registryId);
+    const rankingScores = game.players.map(player => ({
+      player,
+      score: game.scores[player.id] || 0
+    })).sort((a, b) => b.score - a.score);
+
+    for (let i = 0; i < rankingScores.length; i++) {
+      const item = rankingScores[i];
+      await registry.fetch("https://internal/registry", {
+        method: "POST",
+        headers: {
+          "x-room-registry-token": this.env.TELEGRAM_BOT_TOKEN,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          type: "record_result",
+          result: {
+            roomId: this.room!.getState().id,
+            gameId: this.room!.getState().config.gameId,
+            playerId: item.player.id,
+            displayName: item.player.displayName || item.player.username || "بازیکن",
+            placement: i + 1,
+            score: item.score,
+            scoreDelta: item.score,
+            won: i === 0
+          } satisfies GameResultRecord
+        })
+      });
+    }
+  }
+
+ asserts this is this & { game: HokmState } {  private requireGame():
     if (!this.game) throw new Error("Game has not started");
   }
 }
