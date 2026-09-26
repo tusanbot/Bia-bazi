@@ -82,7 +82,7 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (data?.room.status === "playing") {
-      router.replace(`/game?room=${encodeURIComponent(roomId)}`);
+      router.replace(`/room/game?room=${encodeURIComponent(roomId)}`);
     }
   }, [data?.room.status, roomId, router]);
 
