@@ -305,6 +305,11 @@ export class GameRoomDurableObject {
       for (const player of game.players) {
         if (player.id !== viewerId) game.twoPlayerBuild.kept[player.id] = [];
       }
+      // In the two-card draw phase, only the player whose turn it is may
+      // see the two privately revealed stock cards.
+      if (game.twoPlayerBuild.currentPlayer !== viewerId) {
+        game.twoPlayerBuild.drawOptions = [];
+      }
     }
 
     return Response.json({ room: this.room.getState(), game });
