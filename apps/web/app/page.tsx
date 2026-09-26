@@ -18,6 +18,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const [groupLaunch, setGroupLaunch] = useState(false);
+  const [activeRooms, setActiveRooms] = useState<Array<{ id: string; gameId: string; playerCount: number; currentPlayers: number; hostName: string }>>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -29,6 +30,14 @@ export default function Home() {
     const chatType = telegramChatType();
 
     setUser(currentUser);
+
+    if (currentUser) {
+      const initData = window.Telegram?.WebApp?.initData ?? "";
+      fetch("/api/rooms", { headers: { "x-telegram-init-data": initData }, cache: "no-store" })
+        .then(res => res.ok ? res.json() : Promise.reject(new Error()))
+        .then(json => setActiveRooms(json.rooms ?? []))
+        .catch(() => setActiveRooms([]));
+    }
 
     // A shared room invite uses startapp=room_<roomId>.
     // Join the exact Durable Object named by the invite instead of creating a new room.
@@ -155,6 +164,26 @@ export default function Home() {
       {groupLaunch && !error && (
         <div className="mode-hint">در حال ورود به اتاق حکم گروه...</div>
       )}
+
+      <section>
+        <div className="section-title"><h2>اتاق‌های فعال</h2><span>{activeRooms.length} اتاق</span></div>
+        {activeRooms.length === 0 ? (
+          <div className="mode-hint">فعلاً اتاق آماده‌ای برای ورود وجود ندارد.</div>
+        ) : (
+          <div className="active-rooms">
+            {activeRooms.map(room => (
+              <div className="active-room" key={room.id}>
+                <div className="active-room-icon">🃏</div>
+                <div className="active-room-copy">
+                  <strong>حکم {room.playerCount} نفره</strong>
+                  <span>{room.currentPlayers} / {room.playerCount} بازیکن · میزبان {room.hostName}</span>
+                </div>
+                <button className="secondary" onClick={() => router.push(`/room?room=${encodeURIComponent(room.id)}`)}>ورود</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section>
         <div className="section-title"><h2>بازی‌ها</h2><span>۱ بازی فعال</span></div>
