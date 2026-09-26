@@ -15,6 +15,7 @@ import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace;
+  ASSETS: Fetcher;
   TELEGRAM_BOT_TOKEN: string;
 }
 
@@ -275,13 +276,24 @@ export class GameRoomDurableObject {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const roomId = new URL(request.url).searchParams.get("room");
-    if (!roomId) return Response.json({ error: "room is required" }, { status: 400 });
+    const url = new URL(request.url);
 
-    const id = env.GAME_ROOM.idFromName(roomId);
-    const headers = new Headers(request.headers);
-    headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);
+    // The same Worker serves both the Mini App and the game backend.
+    // All /api/room traffic is routed to the Durable Object; everything
+    // else is served from the Next.js static export.
+    if (url.pathname === "/api/room") {
+      const roomId = url.searchParams.get("room");
+      if (!roomId) {
+        return Response.json({ error: "room is required" }, { status: 400 });
+      }
 
-    return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
+      const id = env.GAME_ROOM.idFromName(roomId);
+      const headers = new Headers(request.headers);
+      headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);
+
+      return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
+    }
+
+    return env.ASSETS.fetch(request);
   }
 };
