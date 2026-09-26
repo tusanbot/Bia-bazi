@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { initTelegram, telegramUser } from "../../../../lib/telegram";
+import { initTelegram, telegramUser } from "../../../lib/telegram";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
 type Card = { id: string; suit: Suit; rank: number };
