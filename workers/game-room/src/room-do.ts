@@ -373,15 +373,15 @@ export class GameRoomDurableObject {
               bestStreak: 0,
               updatedAt: Date.now()
             };
-
-            // The same player result can only be applied once per room.
             const resultKeys = (await this.state.storage.get<Record<string, true>>("recorded_results")) || {};
             const resultKey = body.result.roomId + ":" + body.result.playerId;
+
             if (!resultKeys[resultKey]) {
               existing.displayName = body.result.displayName || existing.displayName;
               existing.gamesPlayed += 1;
               existing.score += body.result.scoreDelta;
               existing.rating += body.result.won ? 10 : -5;
+
               if (body.result.won) {
                 existing.wins += 1;
                 existing.currentStreak += 1;
@@ -390,12 +390,14 @@ export class GameRoomDurableObject {
                 existing.losses += 1;
                 existing.currentStreak = 0;
               }
+
               existing.updatedAt = Date.now();
               stats[key] = existing;
               resultKeys[resultKey] = true;
               await this.state.storage.put("player_stats", stats);
               await this.state.storage.put("recorded_results", resultKeys);
             }
+
             return Response.json({ ok: true, stats: existing });
           }
 
@@ -405,22 +407,9 @@ export class GameRoomDurableObject {
           await this.state.storage.put("rooms", rooms);
           return Response.json({ ok: true });
         }
-          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
-          if (body.room) rooms[body.room.id] = body.room;
-          else delete rooms[body.roomId];
-          await this.state.storage.put("rooms", rooms);
-          return Response.json({ ok: true });
-        }
 
-        if (request.method === "GET") {
-          const initData = request.headers.get("x-telegram-init-data") || "";
-          await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
-          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
-          const active = Object.values(rooms)
-            .filter(room => Date.now() - room.updatedAt < 24 * 60 * 60 * 1000)
-            .sort((a, b) => b.updatedAt - a.updatedAt);
-          return Response.json({ rooms: active });
-        }
+        const initData = request.headers.get("x-telegram-init-data") || "";
+        await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
 
         if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "ranking") {
           const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
@@ -430,9 +419,16 @@ export class GameRoomDurableObject {
           return Response.json({ ranking });
         }
 
+        if (request.method === "GET") {
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          const active = Object.values(rooms)
+            .filter(room => Date.now() - room.updatedAt < 24 * 60 * 60 * 1000)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+          return Response.json({ rooms: active });
+        }
+
         return Response.json({ error: "Not found" }, { status: 404 });
       }
-
       await this.load();
 
       const action: Action = request.method === "GET"
