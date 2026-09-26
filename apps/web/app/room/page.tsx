@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
 
 type RoomPlayer = {
@@ -24,8 +24,7 @@ type Payload = { room: Room; game: unknown | null; error?: string };
 const modes = [2, 3, 4];
 
 export default function RoomPage() {
-  const searchParams = useSearchParams();
-  const roomId = searchParams.get("room") ?? "";
+  const [roomId, setRoomId] = useState("");
   const [data, setData] = useState<Payload | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -33,7 +32,13 @@ export default function RoomPage() {
   const router = useRouter();
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
 
-  useEffect(() => { initTelegram(); setUser(telegramUser()); setReady(true); }, []);
+  useEffect(() => {
+    initTelegram();
+    setUser(telegramUser());
+    const room = new URLSearchParams(window.location.search).get("room") ?? "";
+    setRoomId(room);
+    setReady(true);
+  }, []);
 
   const playerId = user ? String(user.id) : "";
   const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "بازیکن";
