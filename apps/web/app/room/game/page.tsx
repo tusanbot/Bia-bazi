@@ -84,13 +84,6 @@ export default function HokmGamePage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (!currentGame || currentGame.phase !== "hand_finished" || !currentGame.handResultApplied) return;
-    const timer = window.setTimeout(() => {
-      act({ type: "next_hand" });
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [currentGame?.phase, currentGame?.handResultApplied]);
 
 
   const refresh = useCallback(async () => {
@@ -132,6 +125,13 @@ export default function HokmGamePage() {
   }
 
   const currentGame = data?.game;
+  useEffect(() => {
+    if (!currentGame || currentGame.phase !== "hand_finished" || !currentGame.handResultApplied) return;
+    const timer = window.setTimeout(() => {
+      act({ type: "next_hand" });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [currentGame?.phase, currentGame?.handResultApplied]);
   const me = currentGame?.players.find(p => p.id === playerId);
   const myHand = currentGame?.hands[playerId] ?? [];
   const playable = useMemo(() => {
