@@ -18,9 +18,17 @@ async function forward(request: NextRequest) {
   const target = new URL(GAME_ROOM_URL);
   target.searchParams.set("room", room);
 
+  const headers = new Headers();
+  headers.set("content-type", "application/json");
+
+  const initData = request.headers.get("x-telegram-init-data");
+  if (initData) {
+    headers.set("x-telegram-init-data", initData);
+  }
+
   const init: RequestInit = {
     method: request.method,
-    headers: { "content-type": "application/json" }
+    headers
   };
 
   if (request.method !== "GET") {
