@@ -274,6 +274,7 @@ export class GameRoomDurableObject {
 
   async fetch(request: Request): Promise<Response> {
     try {
+      const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
       await this.load();
 
       const action: Action = request.method === "GET"
@@ -302,7 +303,7 @@ export class GameRoomDurableObject {
         if (this.room) throw new Error("Room already exists");
 
         this.room = createHokmRoom(
-          this.state.id.toString(),
+          requestedRoomId,
           action.playerCount,
           {
             id: userId,
