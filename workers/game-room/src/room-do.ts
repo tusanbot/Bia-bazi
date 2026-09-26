@@ -140,7 +140,15 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
           throw new Error("Worker Telegram bot token could not be identified");
         }
 
-        // Ed25519 validates the fields except both hash and signature.\n        // The HMAC check above intentionally uses the normal WebApp data-check\n        // string; this third-party signature has a different construction.\n        const signatureCheckString = [\n          `${botId}:WebAppData`,\n          ...[...params.entries()]\n            .filter(([key]) => key !== "hash" && key !== "signature")\n            .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)\n            .map(([key, value]) => key + "=" + value)\n        ].join("\\n");
+        // Telegram Ed25519 validation excludes both hash and signature.
+        // The signed payload starts with the Worker-resolved bot ID.
+        const signatureCheckString = [
+          botId + ":WebAppData",
+          ...[...params.entries()]
+            .filter(([key]) => key !== "hash" && key !== "signature")
+            .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+            .map(([key, value]) => key + "=" + value)
+        ].join("\n");
 
         const publicKeyHex =
           "e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d";
