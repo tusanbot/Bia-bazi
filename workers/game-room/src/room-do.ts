@@ -44,7 +44,8 @@ function displayName(user: TelegramUser) {
 }
 
 async function verifyTelegramInitData(initData: string, botToken: string): Promise<TelegramUser> {
-  if (!initData || !botToken) throw new Error("Telegram authentication is not configured");
+  if (!botToken) throw new Error("Telegram bot token is not configured on the Worker");
+  if (!initData) throw new Error("Telegram initData is missing; open the game from Telegram");
 
   const params = new URLSearchParams(initData);
   const receivedHash = params.get("hash");
