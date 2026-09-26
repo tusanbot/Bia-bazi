@@ -692,6 +692,13 @@ export default {
     if (url.pathname === "/api/ranking") {
       const initData = request.headers.get("x-telegram-init-data") || "";
       if (!initData) return Response.json({ error: "Telegram authentication required" }, { status: 401 });
+      await verifyTelegramInitData(initData, env.TELEGRAM_BOT_TOKEN);
+      if (env.DB) {
+        const rows = await env.DB.prepare(
+          "SELECT u.telegram_id AS playerId, COALESCE(u.first_name || ' ' || u.last_name, u.username, 'بازیکن') AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
+        ).all();
+        return Response.json({ ranking: rows.results });
+      }
       const registryId = env.GAME_ROOM.idFromName("__room_registry__");
       return env.GAME_ROOM.get(registryId).fetch("https://internal/registry?view=ranking", {
         method: "GET",
