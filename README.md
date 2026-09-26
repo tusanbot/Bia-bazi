@@ -50,103 +50,95 @@ Inline Mode → انتخاب بازی → ساخت Room → انتشار پیا�
 
 ## استقرار روی Cloudflare
 
-این پروژه به‌صورت کامل روی **Cloudflare Workers** طراحی شده و برای اجرای بخش وب به Vercel وابسته نیست.
+کل پروژه روی **یک Cloudflare Worker** به نام `bia-bazi` اجرا می‌شود. نیازی به Worker جداگانه برای Web یا Game Room نیست.
 
-### معماری استقرار
-
-دو Worker مستقل داریم:
+### معماری
 
 ```
 Telegram Mini App
-        │
-        ▼
-bia-bazi-web
-(Next.js + OpenNext)
-        │
-        │ /api/room
-        ▼
+       │
+       ▼
+bia-bazi Worker
+   ┌───┴───────────────┐
+   │                   │
+   ▼                   ▼
+Static Web          /api/room
+Next.js export          │
+                       ▼
+                 GAME_ROOM
+                Durable Object
+                       │
+                       ▼
+                  Hokm Engine
+```
+
+Binding موجود `GAME_ROOM` همان Durable Object بازی است و **Worker جداگانه‌ای نیست**.
+
+### Cloudflare تنظیمات Worker
+
+Worker:
+
+```
 bia-bazi
-(Game Room Worker)
-        │
-        ▼
-GameRoomDurableObject
-        │
-        ▼
-hokm-engine
 ```
 
-- `apps/web` → رابط کاربری Mini App و Route Handlerهای وب
-- `workers/game-room` → اتاق بازی، احراز هویت Telegram و Durable Object
-- `workers/api` → API قدیمی/کمکی و خارج از مسیر اصلی بازی
+Bindingها:
 
-Cloudflare برای پروژه‌های Next.js مسیر Workers را پشتیبانی می‌کند و OpenNext خروجی Next.js را به Worker و assetهای قابل استقرار تبدیل می‌کند.
+- Durable Object binding: `GAME_ROOM`
+- Asset binding: `ASSETS` (برای خروجی `apps/web/out`)
 
-### استقرار Web Worker
-
-در Cloudflare یک Worker برای `apps/web` با این مشخصات بسازید:
-
-- **Root directory:** `apps/web`
-- **Build command:** `npm run build` یا استفاده از script آماده `npm run deploy`
-- **Worker name:** `bia-bazi-web`
-
-فایل `apps/web/wrangler.toml` از قبل برای OpenNext تنظیم شده است.
-
-متغیر زیر را در تنظیمات Worker وب ثبت کنید:
-
-- `GAME_ROOM_URL` → آدرس Worker مربوط به `workers/game-room`
-
-مثال:
+Secret:
 
 ```
-GAME_ROOM_URL=https://bia-bazi.<your-subdomain>.workers.dev
+TELEGRAM_BOT_TOKEN
 ```
 
-### استقرار Game Room Worker
+که باید توکن همان ربات تلگرامی باشد.
 
-برای Worker بازی:
+### Build و Deploy
+
+از ریشه repository:
 
 ```bash
-cd workers/game-room
 npm install
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npm run deploy
+npm run deploy:bia-bazi
 ```
 
-`TELEGRAM_BOT_TOKEN` باید توکن همان رباتی باشد که Mini App را باز می‌کند.
+این دستور ابتدا Next.js را به‌صورت static در `apps/web/out` build می‌کند و سپس همان Worker `bia-bazi` را deploy می‌کند.
 
-### استقرار Web
+اگر از Cloudflare Workers Builds استفاده می‌کنی، Build command را به:
 
 ```bash
-cd apps/web
-npm install
-npm run deploy
+npm install && npm run build:bia-bazi
 ```
 
-پس از استقرار، آدرس `bia-bazi-web` نقطه ورود Mini App است؛ آدرس Worker `bia-bazi` مستقیماً برای نمایش رابط کاربری استفاده نمی‌شود و مسئول Game Room است.
+و Deploy command را به استقرار Worker موجود پروژه تنظیم کن.
 
-### متغیرهای لازم
-
-| Worker | متغیر | کاربرد |
-|---|---|---|
-| `bia-bazi-web` | `GAME_ROOM_URL` | اتصال Web به Game Room |
-| `bia-bazi` | `TELEGRAM_BOT_TOKEN` | اعتبارسنجی HMAC داده Telegram |
-
-توکن ربات هرگز نباید داخل Client یا فایل‌های عمومی Web قرار بگیرد.
-
-### مسیر درخواست بازی
+### مسیرها
 
 ```
-GET  /api/room?room=<roomId>
-POST /api/room?room=<roomId>
-
-Web Worker
-   ↓
-GAME_ROOM_URL
-   ↓
-Game Room Worker
-   ↓
-Durable Object
+/                       → Mini App
+/api/room?room=<id>     → Game Room Durable Object
 ```
 
-بنابراین اگر URL مربوط به Game Room را مستقیماً بدون پارامتر `room` باز کنید، پاسخ `{"error":"room is required"}` طبیعی است؛ این Worker یک backend است و صفحه اصلی Mini App را سرو نمی‌کند.
+بنابراین باز کردن:
 
+```
+https://bia-bazi.<subdomain>.workers.dev/
+```
+
+باید صفحه «بیا بازی» را نمایش دهد و دیگر نباید `room is required` برگرداند.
+
+### Telegram Mini App
+
+URL اصلی Mini App همان URL Worker است:
+
+```
+https://bia-bazi.<subdomain>.workers.dev/
+```
+
+این URL را در تنظیمات Mini App ربات در BotFather قرار بده.
+
+### نکته
+
+در نسخه قبلی Web و Game Room جدا در نظر گرفته شده بودند. ساختار نهایی پروژه اکنون عمداً به یک Worker واحد برگشته است تا Deployment فعلی Cloudflare تو با Binding `GAME_ROOM` سازگار بماند.
