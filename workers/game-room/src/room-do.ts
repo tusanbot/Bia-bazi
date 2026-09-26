@@ -314,7 +314,11 @@ export class GameRoomDurableObject {
     try {
       const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
 
-      if (this.state.id.toString() === "__room_registry__") {
+      const isRegistryRequest =
+        request.headers.get("x-room-registry-request") === "1" ||
+        request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN;
+
+      if (isRegistryRequest) {
         if (request.method === "POST" && request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN) {
           const body = await request.json<{ type: "sync"; room: ActiveRoom | null; roomId: string }>();
           const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
@@ -508,7 +512,7 @@ export default {
       const registryId = env.GAME_ROOM.idFromName("__room_registry__");
       return env.GAME_ROOM.get(registryId).fetch("https://internal/registry", {
         method: "GET",
-        headers: { "x-telegram-init-data": initData }
+        headers: { "x-telegram-init-data": initData, "x-room-registry-request": "1" }
       });
     }
 
