@@ -47,3 +47,34 @@ Inline Mode → انتخاب بازی → ساخت Room → انتشار پیا�
 - تعداد بازیکنان حاضر از ظرفیت جدید بیشتر نباشد.
 
 بنابراین نمونه‌های معتبر شامل `۲ → ۳`، `۲ → ۴` و `۴ → ۳` (در صورت حضور حداکثر ۳ بازیکن) هستند. پس از شروع بازی، ظرفیت و حالت اتاق ثابت می‌ماند.
+
+
+## استقرار و اتصال Web به Game Room
+
+برای مسیر بازی، اپ Next.js باید مستقیماً به Worker مربوط به `workers/game-room` متصل شود.
+
+`GAME_ROOM_URL` در محیط Vercel باید URL همین Worker باشد؛ **نباید URL `workers/api` باشد**.
+
+مسیر درخواست‌ها:
+
+```
+Telegram Mini App
+  -> Next.js /api/room
+  -> workers/game-room
+  -> GameRoomDurableObject
+  -> hokm-engine
+```
+
+Worker مربوط به `game-room` خودش `TELEGRAM_BOT_TOKEN` را به احراز هویت HMAC تلگرام متصل می‌کند. در نتیجه لازم نیست توکن ربات در مرورگر یا در کد Client قرار بگیرد.
+
+### متغیرهای لازم Web
+
+- `GAME_ROOM_URL`: آدرس Worker مربوط به `workers/game-room`
+
+### متغیرهای لازم Game Room Worker
+
+- `TELEGRAM_BOT_TOKEN`: توکن واقعی همان ربات تلگرام
+
+### نکته مهم
+
+`workers/api` در وضعیت فعلی endpoint احراز هویت کامل بازی نیست و endpoint `/api/auth/telegram` آن هنوز placeholder است. بنابراین قرار دادن URL آن در `GAME_ROOM_URL` باعث خطای احراز هویت می‌شود.
