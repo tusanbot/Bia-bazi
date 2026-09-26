@@ -196,8 +196,15 @@ export function chooseHokm(state: HokmState, playerId: PlayerId, suit: Suit): Ho
 }
 
 export function discardTwo(state: HokmState, playerId: PlayerId, cardIds: string[]): HokmState {
-  if (state.phase !== "build_two_player_hand" || state.players.length !== 2 || cardIds.length !== 2) {
+  if (state.phase !== "build_two_player_hand" || state.players.length !== 2) {
     throw new Error("Invalid two-player discard");
+  }
+
+  // Standard two-player Hokm: the Hakem discards 3 of the initial 5 cards;
+  // the other player discards 2. This leaves 2 and 3 cards respectively.
+  const required = playerId === state.hokmPlayerId ? 3 : 2;
+  if (cardIds.length !== required) {
+    throw new Error(`You must discard exactly ${required} cards`);
   }
 
   const build = state.twoPlayerBuild!;
