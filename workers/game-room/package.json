@@ -2,7 +2,12 @@
   "name": "@bia-bazi/game-room-worker",
   "private": true,
   "version": "0.1.0",
-  "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create bia-bazi --location weur --binding DB --update-config",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
   "dependencies": {
     "@bia-bazi/game-room": "0.1.0",
     "@bia-bazi/hokm-engine": "0.1.0"
