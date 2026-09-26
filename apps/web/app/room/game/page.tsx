@@ -14,6 +14,10 @@ type Game = {
   phase: string;
   hands: Record<string, Card[]>;
   trick: Array<{ playerId: string; card: Card }>;
+  lastCompletedTrick: Array<{ playerId: string; card: Card }>;
+  handResultApplied: boolean;
+  handWinnerIds: string[];
+  handPoints: Record<string, number>;
   tricksWon: Record<string, number>;
   teamTricks: Record<string, number>;
   scores: Record<string, number>;
@@ -59,7 +63,15 @@ export default function HokmGamePage() {
   useEffect(() => {
     initTelegram();
     setUser(telegramUser());
-    const room = new URLSearchParams(window.location.search).get("room") ?? "";
+    const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
+    const startParam =
+      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
+      new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
+      "";
+    const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
+    const savedRoom = window.localStorage.getItem("bia-bazi:last-room") ?? "";
+    const room = queryRoom || startRoom || savedRoom;
+    if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
   }, []);
@@ -128,6 +140,27 @@ export default function HokmGamePage() {
   const mustDiscard = game.phase === "build_two_player_hand" && build?.phase === "discard" && build.currentPlayer === playerId;
   const mustDraw = game.phase === "build_two_player_hand" && build?.phase === "draw" && build.currentPlayer === playerId;
   const discardCount = playerId === game.hokmPlayerId ? 3 : 2;
+
+  async function shareResult() {
+    if (!roomId || !currentGame) return;
+    try {
+      const linkRes = await fetch(`/api/mini-app-link?room=${encodeURIComponent(roomId)}`);
+      const linkJson = await linkRes.json();
+      if (!linkRes.ok || !linkJson.url) throw new Error("لینک اشتراک‌گذاری آماده نشد");
+      const ranking = [...currentGame.players].sort(
+        (a, b) => (currentGame.scores[b.id] ?? 0) - (currentGame.scores[a.id] ?? 0)
+      );
+      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0}`).join("\n");
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(linkJson.url)}&text=${encodeURIComponent(`نتیجه بازی حکم\n${summary}`) }`;
+      if (window.Telegram?.WebApp?.openTelegramLink) {
+        window.Telegram.WebApp.openTelegramLink(shareUrl);
+      } else {
+        window.open(shareUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "اشتراک‌گذاری ناموفق بود");
+    }
+  }
 
   function toggleCard(card: Card) {
     if (game.phase !== "build_two_player_hand" || !mustDiscard) return;
@@ -214,9 +247,23 @@ export default function HokmGamePage() {
         )}
 
         <div className="trick-table">
-          {game.trick.length ? game.trick.map(play => (
-            <div className="played-card" key={play.playerId}><small>{nameOf(play.playerId)}</small><span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "red" : ""}>{suitMeta[play.card.suit].symbol}</span><b>{rankLabel(play.card.rank)}</b></div>
-          )) : <div className="empty-trick">دست جدید — {game.leaderId === playerId ? "شما شروع می‌کنید" : `${nameOf(game.leaderId)} شروع می‌کند`}</div>}
+          {(game.phase === "hand_finished" || game.phase === "game_finished") && game.lastCompletedTrick?.length
+            ? game.lastCompletedTrick.map(play => (
+                <div className="played-card" key={play.playerId}>
+                  <small>{nameOf(play.playerId)}</small>
+                  <span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "red" : ""}>{suitMeta[play.card.suit].symbol}</span>
+                  <b>{rankLabel(play.card.rank)}</b>
+                </div>
+              ))
+            : game.trick.length
+              ? game.trick.map(play => (
+                  <div className="played-card" key={play.playerId}>
+                    <small>{nameOf(play.playerId)}</small>
+                    <span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "red" : ""}>{suitMeta[play.card.suit].symbol}</span>
+                    <b>{rankLabel(play.card.rank)}</b>
+                  </div>
+                ))
+              : <div className="empty-trick">دست جدید — {game.leaderId === playerId ? "شما شروع می‌کنید" : `${nameOf(game.leaderId)} شروع می‌کند`}</div>}
         </div>
 
         {game.phase === "playing" && (
@@ -254,15 +301,31 @@ export default function HokmGamePage() {
         {game.phase === "hand_finished" && (
           <div className="action-panel">
             <h2>این دست تمام شد</h2>
-            <p>دست‌های برده‌شده محاسبه شدند. برای ثبت نتیجه ادامه دهید.</p>
-            <button className="primary wide" disabled={busy} onClick={() => act({ type: "finish_hand" })}>ثبت نتیجه دست</button>
+            {game.lastCompletedTrick?.length > 0 && <p>آخرین کارت‌ها تا اینجا نمایش داده شده‌اند. نتیجه دست: <b>{game.handWinnerIds.map(nameOf).join(" و ")}</b> · {Math.max(...game.handWinnerIds.map(id => game.handPoints[id] ?? 0))} امتیاز</p>}
+            {!game.handResultApplied ? (
+              <button className="primary wide" disabled={busy} onClick={() => act({ type: "finish_hand" })}>ثبت نتیجه دست</button>
+            ) : (
+              <button className="primary wide" disabled={busy} onClick={() => act({ type: "next_hand" })}>شروع دست بعدی</button>
+            )}
           </div>
         )}
 
         {game.phase === "game_finished" && (
           <div className="action-panel">
             <h2>بازی تمام شد</h2>
-            <p>امتیاز نهایی ثبت شده است.</p>
+            <p>نتیجه بازی ثبت شد و امتیاز شما در رتبه‌بندی ذخیره شد.</p>
+            <div className="final-results">
+              {[...game.players]
+                .sort((a, b) => (game.scores[b.id] ?? 0) - (game.scores[a.id] ?? 0))
+                .map((player, index) => (
+                  <div className="score-box" key={player.id}>
+                    <span>{index + 1}. {player.displayName}</span>
+                    <b>{game.scores[player.id] ?? 0}</b>
+                    <small>{game.tricksWon[player.id] ?? 0} دست</small>
+                  </div>
+                ))}
+            </div>
+            <button className="primary wide" disabled={busy} onClick={shareResult}>اشتراک‌گذاری نتیجه در تلگرام</button>
           </div>
         )}
       </section>
