@@ -231,10 +231,16 @@ export function discardTwo(state: HokmState, playerId: PlayerId, cardIds: string
     return next;
   }
 
+  // The 42-card stock is now the draw pile. Reveal the first pair
+  // immediately so the Hakem can choose one of the two cards.
   build.stock = next.deck;
   next.deck = [];
   build.phase = "draw";
   build.currentPlayer = next.hokmPlayerId;
+  if (build.stock.length < 2) {
+    throw new Error("The two-player stock must contain at least two cards");
+  }
+  build.drawOptions = build.stock.slice(0, 2);
   return next;
 }
 
