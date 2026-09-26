@@ -103,9 +103,9 @@ export default function HokmGamePage() {
     }
   }
 
-  const game = data?.game ?? null;
-  const me = game?.players.find(p => p.id === playerId);
-  const myHand = game?.hands[playerId] ?? [];
+  const currentGame = data?.game;
+  const me = currentGame?.players.find(p => p.id === playerId);
+  const myHand = currentGame?.hands[playerId] ?? [];
   const playable = useMemo(() => {
     if (!game || game.phase !== "playing" || game.turnPlayerId !== playerId) return new Set<string>();
     const lead = game.trick[0]?.card.suit;
@@ -114,10 +114,11 @@ export default function HokmGamePage() {
     return new Set((same.length ? same : myHand).map(c => c.id));
   }, [game, myHand, playerId]);
 
-  if (!data || !game) {
+  if (!data || !currentGame) {
     return <main className="shell"><div className="room-panel">در حال بارگذاری بازی...</div>{error && <p className="error">{error}</p>}</main>;
   }
 
+  const game = currentGame;
   const nameOf = (id: string) => game.players.find(p => p.id === id)?.displayName ?? "بازیکن";
   const isMyTurn = game.turnPlayerId === playerId;
   const build = game.twoPlayerBuild;
