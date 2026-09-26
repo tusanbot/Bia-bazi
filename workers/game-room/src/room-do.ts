@@ -17,6 +17,7 @@ export interface Env {
   GAME_ROOM: DurableObjectNamespace;
   ASSETS: Fetcher;
   TELEGRAM_BOT_TOKEN: string;
+  DB?: D1Database;
 }
 
 type ActiveRoom = {
@@ -281,6 +282,51 @@ export class GameRoomDurableObject {
     if (this.game) await this.state.storage.put("game", this.game);
   }
 
+  private async persistUser(user: TelegramUser) {
+    if (!this.env.DB) return;
+    await this.env.DB.prepare(
+      "INSERT INTO users (telegram_id, username, first_name, last_name, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(telegram_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, updated_at = CURRENT_TIMESTAMP"
+    ).bind(user.id, user.username ?? null, user.first_name ?? "", user.last_name ?? null).run();
+    await this.env.DB.prepare(
+      "INSERT INTO player_stats (user_id) SELECT id FROM users WHERE telegram_id = ? ON CONFLICT(user_id) DO NOTHING"
+    ).bind(user.id).run();
+  }
+
+  private async persistRoom() {
+    if (!this.env.DB || !this.room) return;
+    const state = this.room.getState();
+    const creator = Number(state.players.find(p => p.id === state.hostId)?.id ?? 0);
+    await this.env.DB.prepare(
+      "INSERT INTO game_rooms (id, game_type, status, creator_telegram_id, max_players, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, datetime(?, 'unixepoch'), ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, max_players = excluded.max_players, started_at = COALESCE(game_rooms.started_at, excluded.started_at), finished_at = excluded.finished_at"
+    ).bind(state.id, state.config.gameId, state.status, creator, state.config.playerCount, Math.floor(state.createdAt / 1000), state.status === "playing" ? new Date().toISOString() : null, state.status === "finished" ? new Date().toISOString() : null).run();
+    for (const player of state.players) {
+      await this.env.DB.prepare(
+        "INSERT INTO game_players (room_id, telegram_id, seat, status) VALUES (?, ?, ?, 'active') ON CONFLICT(room_id, telegram_id) DO UPDATE SET seat = excluded.seat, status = 'active'"
+      ).bind(state.id, Number(player.id), player.seat).run();
+    }
+  }
+
+  private async persistGameResult(game: HokmState) {
+    if (!this.env.DB || !this.room) return;
+    const roomId = this.room.getState().id;
+    const ranking = game.players.map(player => ({ player, score: game.scores[player.id] ?? 0 })).sort((a, b) => b.score - a.score);
+    for (let i = 0; i < ranking.length; i++) {
+      const item = ranking[i];
+      const telegramId = Number(item.player.id);
+      const scoreDelta = item.score;
+      const won = i === 0;
+      const existing = await this.env.DB.prepare("SELECT id FROM game_results WHERE room_id = ? AND telegram_id = ? LIMIT 1").bind(roomId, telegramId).first<{ id: number }>();
+      if (existing) continue;
+      const user = await this.env.DB.prepare("SELECT id FROM users WHERE telegram_id = ? LIMIT 1").bind(telegramId).first<{ id: number }>();
+      if (!user) continue;
+      const ratingDelta = won ? 10 : -5;
+      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?)").bind(roomId, telegramId, i + 1, scoreDelta, ratingDelta).run();
+      await this.env.DB.prepare(
+        "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+      ).bind(ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
+    }
+  }
+
   private async syncRegistry() {
     if (!this.room || this.state.id.toString() === "__room_registry__") return;
     try {
@@ -452,6 +498,7 @@ export class GameRoomDurableObject {
 
       const telegramUser = await verifyTelegramInitData(action.initData, botToken);
       const userId = String(telegramUser.id);
+      await this.persistUser(telegramUser);
 
       if (action.type === "list_rooms") {
         throw new Error("Room list is served by the registry endpoint");
@@ -470,7 +517,8 @@ export class GameRoomDurableObject {
           }
         );
 
-        await this.save();
+        await this.persistRoom();
+      await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
       }
@@ -551,19 +599,18 @@ export class GameRoomDurableObject {
           this.requireGame();
           if (action.playerId !== userId) throw new Error("Invalid player identity");
           this.game = playCard(this.game, userId, action.cardId);
-          break;
-
-        case "finish_hand": {
-          this.requireGame();
-          if (!this.game.players.some(player => player.id === userId)) throw new Error("You are not a player");
-          this.game = finishHand(this.game);
-
-          if (this.game.phase === "game_finished") {
-            this.room.finish();
-            await this.recordFinalResult(this.game);
+          if (this.game.phase === "hand_finished") {
+            this.game = finishHand(this.game);
+            if (this.game.phase === "game_finished") {
+              this.room.finish();
+              await this.persistRoom();
+              await this.persistGameResult(this.game);
+            }
           }
           break;
-        }
+
+        case "finish_hand":
+          throw new Error("Hand results are recorded automatically");
 
         case "next_hand":
           this.requireGame();
