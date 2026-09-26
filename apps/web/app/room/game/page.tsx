@@ -107,12 +107,14 @@ export default function HokmGamePage() {
   const me = currentGame?.players.find(p => p.id === playerId);
   const myHand = currentGame?.hands[playerId] ?? [];
   const playable = useMemo(() => {
-    if (!game || game.phase !== "playing" || game.turnPlayerId !== playerId) return new Set<string>();
-    const lead = game.trick[0]?.card.suit;
+    if (!currentGame || currentGame.phase !== "playing" || currentGame.turnPlayerId !== playerId) {
+      return new Set<string>();
+    }
+    const lead = currentGame.trick[0]?.card.suit;
     if (!lead) return new Set(myHand.map(c => c.id));
     const same = myHand.filter(c => c.suit === lead);
     return new Set((same.length ? same : myHand).map(c => c.id));
-  }, [game, myHand, playerId]);
+  }, [currentGame, myHand, playerId]);
 
   if (!data || !currentGame) {
     return <main className="shell"><div className="room-panel">در حال بارگذاری بازی...</div>{error && <p className="error">{error}</p>}</main>;
