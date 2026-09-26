@@ -1,6 +1,6 @@
 export type PlayerId = string;
 
-export interface GamePlayer { id: PlayerId; seat: number; }
+export interface GamePlayer { id: PlayerId; seat: number; displayName?: string; username?: string; }
 
 export interface GameDefinition<State = unknown, Action = unknown> {
   id: string;
