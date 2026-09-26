@@ -47,14 +47,34 @@ export default function RoomPage() {
 
   const refresh = useCallback(async () => {
     const initData = window.Telegram?.WebApp?.initData ?? "";
+    const headers = initData ? { "x-telegram-init-data": initData } : {};
     const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
       cache: "no-store",
-      headers: initData ? { "x-telegram-init-data": initData } : {}
+      headers
     });
     const json = await res.json();
+
+    if (!res.ok && res.status === 400 && user) {
+      const joinRes = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "join",
+          initData,
+          player: { id: playerId, displayName, username: user.username }
+        })
+      });
+      const joinJson = await joinRes.json();
+      if (joinRes.ok) {
+        setData(joinJson);
+        return;
+      }
+      throw new Error(joinJson.error || json.error || "ورود به اتاق ناموفق بود");
+    }
+
     if (!res.ok) throw new Error(json.error || "خطا در دریافت اتاق");
     setData(json);
-  }, [roomId]);
+  }, [roomId, user, playerId, displayName]);
 
   useEffect(() => {
     if (!ready || !roomId) return;
