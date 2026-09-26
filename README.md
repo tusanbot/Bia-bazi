@@ -26,10 +26,10 @@
 - [x] مدل کارت، خال، حکم و Trick
 - [x] Follow Suit
 - [x] منطق ساخت دست دو نفره
-- [ ] اتصال Game Room به Durable Object
-- [ ] ورود با Telegram
-- [ ] رابط کامل Mini App
-- [ ] امتیاز، رتبه‌بندی و رکورد
+- [x] اتصال Game Room به Durable Object
+- [x] ورود با Telegram
+- [x] رابط کامل Mini App
+- [x] امتیاز، رتبه‌بندی و رکورد
 - [ ] اعلان نتیجه در گروه
 
 ## جریان اصلی
@@ -86,6 +86,20 @@ Bindingها:
 
 - Durable Object binding: `GAME_ROOM`
 - Asset binding: `ASSETS` (برای خروجی `apps/web/out`)
+- D1 database binding: `DB` (برای داده دائمی)
+
+### اتصال D1
+
+کد Worker به‌صورت مستقیم از binding اختیاری `DB` استفاده می‌کند و اطلاعات دائمی کاربران، بازی‌ها، بازیکنان و نتایج نهایی را در D1 نگه می‌دارد. برای ساخت دیتابیس واقعی Cloudflare، یک‌بار از مسیر `workers/game-room` اجرا کن:
+
+```bash
+npm run db:create
+npm run db:migrate
+```
+
+دستور اول یک D1 با نام `bia-bazi` می‌سازد و binding `DB` و شناسه دیتابیس را به `wrangler.toml` اضافه می‌کند؛ دستور دوم migrationهای موجود در `workers/game-room/migrations` را روی دیتابیس production اعمال می‌کند. بعد از ایجاد دیتابیس، تغییر `wrangler.toml` را هم commit کن تا Cloudflare Worker در deployهای بعدی همان D1 را دریافت کند.
+
+برای ساخت دیتابیس در اروپا، location به `weur` تنظیم شده است.
 
 Secret:
 
@@ -146,7 +160,7 @@ https://bia-bazi.<subdomain>.workers.dev/
 
 ### اتاق‌های فعال و لینک دعوت
 
-اتاق‌های در انتظار شروع در یک Durable Object رجیستری مرکزی با شناسه ثابت `__room_registry__` ثبت می‌شوند. این رجیستری فقط discovery را انجام می‌دهد و state لحظه‌ای هر بازی همچنان داخل Durable Object اختصاصی همان اتاق باقی می‌ماند. این جداسازی باعث می‌شود API فهرست اتاق‌ها بعداً بتواند بدون تغییر رابط کاربری به D1 منتقل شود.
+اتاق‌های فعال همچنان در Durable Object رجیستری مرکزی با شناسه ثابت `__room_registry__` برای discovery نگهداری می‌شوند. اما داده دائمی بازیکنان، بازی‌ها، نتایج نهایی و رتبه‌بندی دیگر به رجیستری وابسته نیست و در D1 ذخیره می‌شود.
 
 لینک دعوت از نوع Main Mini App Telegram ساخته می‌شود:
 
