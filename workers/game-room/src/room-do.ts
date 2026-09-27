@@ -25,8 +25,6 @@ import {
   replaceMeldJoker as scalaReplaceMeldJoker,
   discard as scalaDiscard,
   startNextRound as scalaStartNextRound,
-  isFinished as scalaIsFinished,
-  winner as scalaWinner,
   type ScalaState,
   type Meld as ScalaMeld
 } from "@bia-bazi/scala-quaranta-engine";
