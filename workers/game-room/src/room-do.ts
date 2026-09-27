@@ -880,6 +880,20 @@ export default {
       try { return await handleTelegramWebhook(request, env); }
       catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Webhook error" }, { status: 500 }); }
     }
+    if (url.pathname === "/telegram/setup" && request.method === "POST") {
+      const setupSecret = url.searchParams.get("secret") || request.headers.get("x-telegram-setup-secret");
+      if (!env.TELEGRAM_WEBHOOK_SECRET || setupSecret !== env.TELEGRAM_WEBHOOK_SECRET) return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const webhookUrl = new URL("/telegram/webhook", url.origin).toString();
+      const commands = [
+        { command: "hokm", description: "ساخت اتاق بازی حکم در گروه" },
+        { command: "start", description: "باز کردن بیا بازی" }
+      ];
+      const [webhook, commandResult] = await Promise.all([
+        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setWebhook", { url: webhookUrl, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "inline_query"] }),
+        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setMyCommands", { commands })
+      ]);
+      return Response.json({ ok: Boolean(webhook?.ok && commandResult?.ok), webhook, commands: commandResult });
+    }
 
     // The same Worker serves both the Mini App and the game backend.
     // All /api/room traffic is routed to the Durable Object; everything
