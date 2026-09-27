@@ -187,3 +187,20 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .learn-section ul { margin:7px 0 0; padding-right:18px; color:var(--muted); font-size:10px; line-height:2; }
 .learn-section li::marker { color:var(--accent); }
 .learn-footer { margin-top:12px; }
+
+
+.scala-stock { display:grid; grid-template-columns:1fr 86px 1fr; gap:7px; align-items:center; margin:10px 0; }
+.discard-pile { min-height:62px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.045); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; text-align:center; }
+.discard-pile small { color:var(--muted); font-size:9px; }
+.discard-pile strong { font-size:11px; }
+.scala-table { margin-top:10px; padding:11px; border-radius:18px; background:rgba(255,255,255,.025); border:1px solid var(--line); }
+.meld-grid { display:flex; flex-wrap:wrap; gap:7px; }
+.meld { padding:8px; border-radius:12px; background:rgba(255,255,255,.045); border:1px solid var(--line); color:var(--text); text-align:right; }
+.meld.selected { border-color:rgba(32,199,163,.55); background:rgba(32,199,163,.1); }
+.meld small { display:block; color:var(--muted); font-size:8px; margin-bottom:4px; }
+.meld span { display:inline-block; margin-left:5px; font-size:11px; }
+.scala-game .management-actions { align-items:center; }
+@media (max-width:520px) {
+  .scala-stock { grid-template-columns:1fr; }
+  .discard-pile { order:-1; }
+}
