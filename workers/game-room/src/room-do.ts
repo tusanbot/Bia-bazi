@@ -548,6 +548,18 @@ export class GameRoomDurableObject {
         return this.response(viewerId);
       }
 
+      if (action.type === "create_group_room" || action.type === "create_inline_room") {
+        if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
+        const roomId = action.type === "create_group_room" ? `group-${action.chatId}-hokm4` : `inline-${action.hostId}-${Date.now().toString(36)}`;
+        if (!this.room) {
+          this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
+          await this.persistRoom();
+          await this.save();
+          await this.syncRegistry();
+        }
+        return Response.json({ room: this.room.getState(), game: null });
+      }
+
       const telegramUser = await verifyTelegramInitData(action.initData, botToken);
       const userId = String(telegramUser.id);
       await this.persistUser(telegramUser);
@@ -575,20 +587,6 @@ export class GameRoomDurableObject {
       await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
-      }
-
-      if (action.type === "create_group_room" || action.type === "create_inline_room") {
-        if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
-        const roomId = action.type === "create_group_room"
-          ? `group-${action.chatId}-hokm4`
-          : `inline-${action.hostId}-${Date.now().toString(36)}`;
-        if (!this.room) {
-          this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
-          await this.persistRoom();
-          await this.save();
-          await this.syncRegistry();
-        }
-        return Response.json({ room: this.room.getState(), game: null });
       }
 
       if (action.type === "create_or_join_group") {
