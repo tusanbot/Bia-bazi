@@ -10,7 +10,7 @@ export interface HokmRoomConfig extends GameRoomConfig {
   maxPlayers: HokmPlayerCount;
 }
 
-export function createHokmRoomConfig(playerCount: HokmPlayerCount): HokmRoomConfig {
+export function createHokmRoomConfig(playerCount: HokmPlayerCount, targetScore: 1 | 3 | 5 | 7 = 7): HokmRoomConfig {
   if (playerCount !== 2 && playerCount !== 3 && playerCount !== 4) {
     throw new Error("Hokm supports exactly 2, 3 or 4 players");
   }
@@ -19,7 +19,8 @@ export function createHokmRoomConfig(playerCount: HokmPlayerCount): HokmRoomConf
     gameId: "hokm",
     playerCount,
     minPlayers: 2,
-    maxPlayers: 4
+    maxPlayers: 4,
+    targetScore
   };
 }
 
@@ -27,7 +28,8 @@ export function createHokmRoom(
   roomId: string,
   playerCount: HokmPlayerCount,
   host: Omit<GamePlayer, "seat"> & { displayName: string; username?: string },
-  now = Date.now()
+  now = Date.now(),
+  targetScore: 1 | 3 | 5 | 7 = 7
 ): GameRoom {
-  return GameRoom.create(roomId, createHokmRoomConfig(playerCount), host, now);
+  return GameRoom.create(roomId, createHokmRoomConfig(playerCount, targetScore), host, now);
 }
