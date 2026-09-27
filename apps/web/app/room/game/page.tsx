@@ -35,7 +35,13 @@ type Game = {
   leaderId: string;
 };
 
-type Payload = { room: { status: string }; game: Game | null; error?: string };
+type Payload = {
+  room: { status: string; hostId?: string };
+  game: Game | null;
+  stopAfterOddHand?: boolean;
+  chatMessages?: Array<{ id: string; playerId: string; displayName: string; text: string; createdAt: number }>;
+  error?: string;
+};
 
 const suitMeta: Record<Suit, { symbol: string; name: string }> = {
   spades: { symbol: "♠", name: "پیک" },
@@ -61,6 +67,8 @@ export default function HokmGamePage() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
+  const [sortMode, setSortMode] = useState<"original" | "value" | "suit" | "value_suit">("original");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     initTelegram();
@@ -134,6 +142,15 @@ export default function HokmGamePage() {
   }, [currentGame?.phase, currentGame?.handResultApplied]);
   const me = currentGame?.players.find(p => p.id === playerId);
   const myHand = currentGame?.hands[playerId] ?? [];
+
+  const sortedMyHand = useMemo(() => {
+    const hand = [...myHand];
+    const suitOrder: Record<Suit, number> = { spades: 0, hearts: 1, diamonds: 2, clubs: 3 };
+    if (sortMode === "value") return hand.sort((a, b) => b.rank - a.rank);
+    if (sortMode === "suit") return hand.sort((a, b) => suitOrder[a.suit] - suitOrder[b.suit] || b.rank - a.rank);
+    if (sortMode === "value_suit") return hand.sort((a, b) => b.rank - a.rank || suitOrder[a.suit] - suitOrder[b.suit]);
+    return hand;
+  }, [myHand, sortMode]);
   const playable = useMemo(() => {
     if (!currentGame || currentGame.phase !== "playing" || currentGame.turnPlayerId !== playerId) {
       return new Set<string>();
@@ -150,6 +167,8 @@ export default function HokmGamePage() {
 
   const game = currentGame;
   const nameOf = (id: string) => game.players.find(p => p.id === id)?.displayName ?? "بازیکن";
+  const shortName = (name: string, max = 14) => name.length > max ? name.slice(0, max) + "…" : name;
+  const isHost = data?.room.hostId === playerId;
   const isMyTurn = game.turnPlayerId === playerId;
   const turnLocked = game.turnUnlockAt > now;
   const build = game.twoPlayerBuild;
@@ -199,7 +218,7 @@ export default function HokmGamePage() {
       <section className="score-strip">
         {game.players.map(player => (
           <div key={player.id} className={player.id === playerId ? "score-box me" : "score-box"}>
-            <span>{player.displayName}</span>
+            <span title={player.displayName}>{shortName(player.displayName, 16)}</span>
             <b>{game.scores[player.id] ?? 0}</b>
             <small>{game.tricksWon[player.id] ?? 0} دست</small>
           </div>
@@ -266,7 +285,7 @@ export default function HokmGamePage() {
           {(game.phase === "hand_finished" || game.phase === "game_finished" || game.phase === "playing") && game.lastCompletedTrick?.length
             ? game.lastCompletedTrick.map(play => (
                 <div className="played-card" key={play.playerId}>
-                  <small>{nameOf(play.playerId)}</small>
+                  <small title={nameOf(play.playerId)}>{shortName(nameOf(play.playerId), 10)}</small>
                   <span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "red" : ""}>{suitMeta[play.card.suit].symbol}</span>
                   <b>{rankLabel(play.card.rank)}</b>
                 </div>
@@ -285,8 +304,14 @@ export default function HokmGamePage() {
         {game.phase === "playing" && (
           <div className="hand-area">
             <div className="hand-title"><span>دست شما</span><small>{myHand.length} کارت</small></div>
+            <div className="sort-actions">
+              <button className={sortMode === "original" ? "mode-chip selected" : "mode-chip"} onClick={() => setSortMode("original")}>اصلی</button>
+              <button className={sortMode === "value" ? "mode-chip selected" : "mode-chip"} onClick={() => setSortMode("value")}>ارزش</button>
+              <button className={sortMode === "suit" ? "mode-chip selected" : "mode-chip"} onClick={() => setSortMode("suit")}>خال</button>
+              <button className={sortMode === "value_suit" ? "mode-chip selected" : "mode-chip"} onClick={() => setSortMode("value_suit")}>ارزش + خال</button>
+            </div>
             <div className="cards">
-              {myHand.map(card => {
+              {sortedMyHand.map(card => {
                 const allowed = playable.has(card.id) && !turnLocked;
                 const picked = selected.includes(card.id);
                 return (
@@ -320,6 +345,50 @@ export default function HokmGamePage() {
             {game.lastCompletedTrick?.length > 0 && <p>آخرین کارت‌های دست قبل نمایش داده می‌شوند. دست بعدی پس از یک ثانیه آماده می‌شود.</p>}
           </div>
         )}
+
+
+        {game.phase === "playing" && (
+          <div className="action-panel room-management">
+            <div className="section-title"><h2>مدیریت اتاق</h2><span>{isHost ? "میزبان" : "فقط مشاهده"}</span></div>
+            {isHost && (
+              <div className="management-actions">
+                <button className="secondary" disabled={busy || data.stopAfterOddHand} onClick={() => act({ type: "request_finish" })}>
+                  {data.stopAfterOddHand ? "پایان بازی در دست فرد بعدی" : "اتمام بازی در دست فرد"}
+                </button>
+                <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
+                <button className="secondary danger" disabled={busy} onClick={() => act({ type: "close_room" })}>بستن اتاق</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <section className="chat-panel">
+          <div className="section-title"><h2>گفت‌وگوی بازیکنان</h2><span>{(data.chatMessages ?? []).length} پیام</span></div>
+          <div className="chat-messages">
+            {(data.chatMessages ?? []).slice(-30).map(msg => (
+              <div key={msg.id} className={msg.playerId === playerId ? "chat-message mine" : "chat-message"}>
+                <strong title={msg.displayName}>{shortName(msg.displayName, 14)}</strong>
+                <span>{msg.text}</span>
+              </div>
+            ))}
+            {!(data.chatMessages ?? []).length && <div className="empty-chat">هنوز پیامی ارسال نشده است.</div>}
+          </div>
+          <div className="chat-compose">
+            <input
+              value={message}
+              maxLength={300}
+              placeholder="پیام برای بازیکنان..."
+              onChange={e => setMessage(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && message.trim()) {
+                  act({ type: "send_message", text: message.trim() });
+                  setMessage("");
+                }
+              }}
+            />
+            <button className="primary" disabled={busy || !message.trim()} onClick={() => { act({ type: "send_message", text: message.trim() }); setMessage(""); }}>ارسال</button>
+          </div>
+        </section>
 
         {game.phase === "game_finished" && (
           <div className="action-panel">
