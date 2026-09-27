@@ -168,7 +168,7 @@ export default function Home() {
       <section className="profile-card">
         <div className="avatar">👤</div>
         <div><strong>{displayName}</strong><span>{user ? "حساب تلگرام متصل است." : "برای ورود، Mini App را از داخل تلگرام باز کنید."}</span></div>
-        <button className="primary" onClick={createRoom}>{user ? "بازی" : "ورود با تلگرام"}</button>
+        <button className="primary" onClick={() => createRoom()}>{user ? "بازی" : "ورود با تلگرام"}</button>
       </section>
 
       {groupLaunch && !error && (
