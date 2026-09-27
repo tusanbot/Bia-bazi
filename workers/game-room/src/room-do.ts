@@ -15,6 +15,21 @@ import {
   startNoTrumpVariant
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
+import {
+  createInitialState as createScalaInitialState,
+  drawFromDeck as scalaDrawFromDeck,
+  drawFromDiscard as scalaDrawFromDiscard,
+  recycleDiscard as scalaRecycleDiscard,
+  layMelds as scalaLayMelds,
+  addCardToMeld as scalaAddCardToMeld,
+  replaceMeldJoker as scalaReplaceMeldJoker,
+  discard as scalaDiscard,
+  startNextRound as scalaStartNextRound,
+  isFinished as scalaIsFinished,
+  winner as scalaWinner,
+  type ScalaState,
+  type Meld as ScalaMeld
+} from "@bia-bazi/scala-quaranta-engine";
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace;
@@ -76,7 +91,7 @@ type TelegramUser = {
 };
 
 type Action =
-  | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: unknown; initData: string }
+  | { type: "create"; gameId: "hokm" | "scala_quaranta"; playerCount: number; host: unknown; initData: string }
   | { type: "create_or_join_group"; gameId: "hokm"; playerCount: HokmPlayerCount; initData: string }
   | { type: "create_group_room"; gameId: "hokm"; playerCount: HokmPlayerCount; chatId: string; hostId: string; hostName: string }
   | { type: "create_inline_room"; gameId: "hokm"; playerCount: HokmPlayerCount; hostId: string; hostName: string }
@@ -87,6 +102,14 @@ type Action =
   | { type: "set_target_score"; targetScore: 1 | 3 | 5 | 7; initData: string }
   | { type: "set_variant"; variantId: HokmVariantId; initData: string }
   | { type: "start"; initData: string }
+  | { type: "scala_draw_deck"; playerId: string; initData: string }
+  | { type: "scala_draw_discard"; playerId: string; initData: string }
+  | { type: "scala_recycle_discard"; initData: string }
+  | { type: "scala_lay_melds"; playerId: string; melds: ScalaMeld[]; initData: string }
+  | { type: "scala_add_card"; playerId: string; meldId: string; cardId: string; initData: string }
+  | { type: "scala_replace_joker"; playerId: string; meldId: string; cardId: string; initData: string }
+  | { type: "scala_discard"; playerId: string; cardId: string; initData: string }
+  | { type: "scala_next_round"; initData: string }
   | { type: "choose_hokm"; playerId: string; suit?: Suit; initData: string }
   | { type: "discard_two"; playerId: string; cardIds: string[]; initData: string }
   | { type: "draw_two"; playerId: string; keep: boolean; initData: string }
@@ -285,6 +308,7 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
 export class GameRoomDurableObject {
   private room?: GameRoom;
   private game?: HokmState;
+  private scalaGame?: ScalaState;
   private stopAfterOddHand = false;
   private chatMessages: ChatMessage[] = [];
 
@@ -295,6 +319,7 @@ export class GameRoomDurableObject {
     const storedRoom = await this.state.storage.get<GameRoomState>("room");
     if (storedRoom) this.room = new GameRoom(storedRoom);
     this.game = await this.state.storage.get<HokmState>("game");
+    this.scalaGame = await this.state.storage.get<ScalaState>("scala_game");
     this.stopAfterOddHand = (await this.state.storage.get<boolean>("stop_after_odd_hand")) ?? false;
     this.chatMessages = (await this.state.storage.get<ChatMessage[]>("chat_messages")) ?? [];
     return this.room;
@@ -304,6 +329,7 @@ export class GameRoomDurableObject {
     if (!this.room) throw new Error("Room does not exist");
     await this.state.storage.put("room", this.room.getState());
     if (this.game) await this.state.storage.put("game", this.game);
+    if (this.scalaGame) await this.state.storage.put("scala_game", this.scalaGame);
     await this.state.storage.put("stop_after_odd_hand", this.stopAfterOddHand);
     await this.state.storage.put("chat_messages", this.chatMessages.slice(-100));
   }
@@ -384,12 +410,27 @@ export class GameRoomDurableObject {
   private response(viewerId?: string) {
     if (!this.room) throw new Error("Room does not exist");
 
-    if (!this.game) {
+    if (!this.game && !this.scalaGame) {
       return Response.json({ room: this.room.getState(), game: null });
     }
 
     if (!viewerId) throw new Error("Authentication required");
 
+    if (this.room.getState().config.gameId === "scala_quaranta" && this.scalaGame) {
+      const game = structuredClone(this.scalaGame);
+      game.deck = [];
+      for (const player of game.players) {
+        if (player.id !== viewerId) game.hands[player.id] = [];
+      }
+      return Response.json({
+        room: this.room.getState(),
+        game,
+        stopAfterOddHand: false,
+        chatMessages: this.chatMessages
+      });
+    }
+
+    if (!this.game) throw new Error("Game state is unavailable");
     const game = structuredClone(this.game);
     game.deck = [];
     game.removedCards = [];
@@ -404,8 +445,6 @@ export class GameRoomDurableObject {
       for (const player of game.players) {
         if (player.id !== viewerId) game.twoPlayerBuild.kept[player.id] = [];
       }
-      // In the two-card draw phase, only the player whose turn it is may
-      // see the two privately revealed stock cards.
       if (game.twoPlayerBuild.currentPlayer !== viewerId) {
         game.twoPlayerBuild.drawOptions = [];
       }
@@ -574,21 +613,32 @@ export class GameRoomDurableObject {
 
       if (action.type === "create") {
         if (this.room) throw new Error("Room already exists");
-
-        this.room = createHokmRoom(
-          requestedRoomId,
-          action.playerCount,
-          {
-            id: userId,
-            displayName: displayName(telegramUser),
-            username: telegramUser.username
-          },
-          Date.now(),
-          7
-        );
+        if (action.gameId === "hokm") {
+          if (![2, 3, 4].includes(action.playerCount)) throw new Error("Invalid Hokm player count");
+          this.room = createHokmRoom(
+            requestedRoomId,
+            action.playerCount as HokmPlayerCount,
+            {
+              id: userId,
+              displayName: displayName(telegramUser),
+              username: telegramUser.username
+            },
+            Date.now(),
+            7
+          );
+        } else if (action.gameId === "scala_quaranta") {
+          if (action.playerCount < 2 || action.playerCount > 6) throw new Error("Scala Quaranta supports 2 to 6 players");
+          this.room = GameRoom.create(
+            requestedRoomId,
+            { gameId: "scala_quaranta", playerCount: action.playerCount, minPlayers: 2, maxPlayers: 6 },
+            { id: userId, displayName: displayName(telegramUser), username: telegramUser.username }
+          );
+        } else {
+          throw new Error("Unsupported game");
+        }
 
         await this.persistRoom();
-      await this.save();
+        await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
       }
@@ -621,7 +671,7 @@ export class GameRoomDurableObject {
       if (!this.room) throw new Error("Room does not exist");
 
       if (
-        ["choose_hokm", "discard_two", "draw_two", "play_card", "next_hand"].includes(action.type) &&
+        ["choose_hokm", "discard_two", "draw_two", "play_card", "next_hand", "scala_draw_deck", "scala_draw_discard", "scala_recycle_discard", "scala_lay_melds", "scala_add_card", "scala_replace_joker", "scala_discard", "scala_next_round"].includes(action.type) &&
         this.room.getState().status !== "playing"
       ) {
         throw new Error("Room is no longer playing");
@@ -671,28 +721,88 @@ export class GameRoomDurableObject {
         case "start": {
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
-          const players = this.room.getState().players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
-          // The host starts the match, but does not automatically become Hakem.
-          // Pick the initial Hakem randomly from all players so joining order
-          // cannot determine the first Hakem.
-          const randomBytes = new Uint32Array(1);
-          crypto.getRandomValues(randomBytes);
-          const initialHokmIndex = randomBytes[0] % players.length;
-          const initialHokmPlayerId = players[initialHokmIndex].id;
-          this.game = buildInitialState(
-            players,
-            initialHokmPlayerId,
-            initialHokmPlayerId,
-            Math.random,
-            this.room.getState().config.targetScore ?? 7,
-            0,
-            getHokmVariant((this.room.getState().config.variantId as HokmVariantId) || "standard").id
-          );
-          const variant = getHokmVariant(this.game.rules.variantId);
-          if (!variant.hasTrump) this.game = startNoTrumpVariant(this.game);
+          const roomState = this.room.getState();
+          const players = roomState.players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
+          if (roomState.config.gameId === "scala_quaranta") {
+            const randomBytes = new Uint32Array(1);
+            crypto.getRandomValues(randomBytes);
+            const dealer = players[randomBytes[0] % players.length].id;
+            this.scalaGame = createScalaInitialState(players, dealer, Math.random, 1);
+          } else {
+            const randomBytes = new Uint32Array(1);
+            crypto.getRandomValues(randomBytes);
+            const initialHokmIndex = randomBytes[0] % players.length;
+            const initialHokmPlayerId = players[initialHokmIndex].id;
+            this.game = buildInitialState(
+              players,
+              initialHokmPlayerId,
+              initialHokmPlayerId,
+              Math.random,
+              roomState.config.targetScore ?? 7,
+              0,
+              getHokmVariant((roomState.config.variantId as HokmVariantId) || "standard").id
+            );
+            const variant = getHokmVariant(this.game.rules.variantId);
+            if (!variant.hasTrump) this.game = startNoTrumpVariant(this.game);
+          }
           this.room.markPlaying();
           break;
         }
+
+        case "scala_draw_deck":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaDrawFromDeck(this.scalaGame, userId);
+          break;
+
+        case "scala_draw_discard":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaDrawFromDiscard(this.scalaGame, userId);
+          break;
+
+        case "scala_recycle_discard":
+          this.requireScalaGame();
+          this.scalaGame = scalaRecycleDiscard(this.scalaGame);
+          break;
+
+        case "scala_lay_melds":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaLayMelds(this.scalaGame, userId, action.melds);
+          break;
+
+        case "scala_add_card":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaAddCardToMeld(this.scalaGame, userId, action.meldId, action.cardId);
+          break;
+
+        case "scala_replace_joker":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaReplaceMeldJoker(this.scalaGame, userId, action.meldId, action.cardId);
+          break;
+
+        case "scala_discard":
+          this.requireScalaGame();
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.scalaGame = scalaDiscard(this.scalaGame, userId, action.cardId);
+          if (this.scalaGame.phase === "match_finished") {
+            this.room.finish();
+            await this.persistRoom();
+            await this.persistScalaGameResult(this.scalaGame);
+            await this.recordFinalScalaResult(this.scalaGame);
+          } else if (this.scalaGame.phase === "round_finished") {
+            // Keep the room in playing state; the client explicitly starts the next round.
+          }
+          break;
+
+        case "scala_next_round":
+          this.requireScalaGame();
+          if (this.scalaGame.phase !== "round_finished") throw new Error("Round is not finished");
+          this.scalaGame = scalaStartNextRound(this.scalaGame);
+          break;
 
         case "choose_hokm":
           this.requireGame();
@@ -853,6 +963,60 @@ export class GameRoomDurableObject {
           "x-room-registry-token": this.env.TELEGRAM_BOT_TOKEN,
           "content-type": "application/json"
         },
+        body: JSON.stringify({
+          type: "record_result",
+          result: {
+            roomId: this.room!.getState().id,
+            gameId: this.room!.getState().config.gameId,
+            playerId: item.player.id,
+            displayName: item.player.displayName || item.player.username || "بازیکن",
+            placement: i + 1,
+            score: item.score,
+            scoreDelta: item.score,
+            won: i === 0
+          } satisfies GameResultRecord
+        })
+      });
+    }
+  }
+
+  private requireScalaGame(): asserts this is this & { scalaGame: ScalaState } {
+    if (!this.scalaGame) throw new Error("Scala Quaranta game has not started");
+  }
+
+  private async persistScalaGameResult(game: ScalaState) {
+    if (!this.env.DB || !this.room) return;
+    const roomId = this.room.getState().id;
+    const ranking = game.players
+      .map(player => ({ player, score: game.scores[player.id] ?? 0 }))
+      .sort((a, b) => a.score - b.score);
+    for (let i = 0; i < ranking.length; i++) {
+      const item = ranking[i];
+      const telegramId = Number(item.player.id);
+      const user = await this.env.DB.prepare("SELECT id FROM users WHERE telegram_id = ? LIMIT 1").bind(telegramId).first<{ id: number }>();
+      if (!user) continue;
+      const existing = await this.env.DB.prepare("SELECT id FROM game_results WHERE room_id = ? AND telegram_id = ? LIMIT 1").bind(roomId, telegramId).first<{ id: number }>();
+      if (existing) continue;
+      const won = i === 0;
+      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?)")
+        .bind(roomId, telegramId, i + 1, item.score, won ? 10 : -5).run();
+      await this.env.DB.prepare(
+        "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+      ).bind(won ? 10 : -5, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
+    }
+  }
+
+  private async recordFinalScalaResult(game: ScalaState) {
+    const registryId = this.env.GAME_ROOM.idFromName("__room_registry__");
+    const registry = this.env.GAME_ROOM.get(registryId);
+    const ranking = game.players
+      .map(player => ({ player, score: game.scores[player.id] ?? 0 }))
+      .sort((a, b) => a.score - b.score);
+    for (let i = 0; i < ranking.length; i++) {
+      const item = ranking[i];
+      await registry.fetch("https://internal/registry", {
+        method: "POST",
+        headers: { "x-room-registry-token": this.env.TELEGRAM_BOT_TOKEN, "content-type": "application/json" },
         body: JSON.stringify({
           type: "record_result",
           result: {
