@@ -7,6 +7,11 @@ compatibility_flags = ["nodejs_compat"]
 name = "GAME_ROOM"
 class_name = "GameRoomDurableObject"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "bia-bazi"
+database_id = "656a8f6e-baec-47ca-8f0b-6c43d390c0d4"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoomDurableObject"]
