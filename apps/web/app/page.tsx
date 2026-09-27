@@ -14,6 +14,8 @@ import {
 
 export default function Home() {
   const [hokmMode, setHokmMode] = useState(4);
+  const [scalaMode, setScalaMode] = useState(4);
+  const [selectedGame, setSelectedGame] = useState<"hokm" | "scala_quaranta">("hokm");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
@@ -26,6 +28,8 @@ export default function Home() {
     initTelegram();
 
     const currentUser = telegramUser();
+    const gameParam = new URLSearchParams(window.location.search).get("game");
+    if (gameParam === "scala_quaranta") setSelectedGame("scala_quaranta");
     const startParam = telegramStartParam();
     const chatInstance = telegramChatInstance();
     const chatType = telegramChatType();
@@ -129,8 +133,8 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "create",
-          gameId: "hokm",
-          playerCount: hokmMode,
+          gameId: selectedGame,
+          playerCount: selectedGame === "hokm" ? hokmMode : scalaMode,
           initData,
           host: {
             id: String(user.id),
@@ -191,8 +195,8 @@ export default function Home() {
       </section>
 
       <section>
-        <div className="section-title"><h2>بازی‌ها</h2><span>۱ بازی فعال</span></div>
-        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={createRoom} learnHref="/games/hokm/learn" />
+        <div className="section-title"><h2>بازی‌ها</h2><span>۲ بازی</span></div>
+        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={createRoom} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setSelectedGame("scala_quaranta"); setScalaMode(value); }} onPlay={() => { setSelectedGame("scala_quaranta"); createRoom(); }} learnHref="/games/scala-quaranta/learn" />
       </section>
 
       {creating && !groupLaunch && <div className="mode-hint">در حال ساخت اتاق...</div>}
