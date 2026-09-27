@@ -211,7 +211,7 @@ export default function HokmGamePage() {
         <div>
           <div className="eyebrow">HOKM · {game.rules.playerCount} PLAYER</div>
           <h1>حکم</h1>
-          <p>{game.hokm ? `حکم: ${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : "در انتظار انتخاب حکم"}</p>
+          <p className="current-trump">{game.hokm ? `حکم: ${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : "در انتظار انتخاب حکم"}</p>
         </div>
       </header>
 
@@ -293,7 +293,7 @@ export default function HokmGamePage() {
             : game.trick.length
               ? game.trick.map(play => (
                   <div className="played-card" key={play.playerId}>
-                    <small>{nameOf(play.playerId)}</small>
+                    <small title={nameOf(play.playerId)}>{shortName(nameOf(play.playerId), 10)}</small>
                     <span className={play.card.suit === "hearts" || play.card.suit === "diamonds" ? "red" : ""}>{suitMeta[play.card.suit].symbol}</span>
                     <b>{rankLabel(play.card.rank)}</b>
                   </div>
@@ -301,7 +301,14 @@ export default function HokmGamePage() {
               : <div className="empty-trick">دست جدید — {game.leaderId === playerId ? "شما شروع می‌کنید" : `${nameOf(game.leaderId)} شروع می‌کند`}</div>}
         </div>
 
-        {game.phase === "playing" && (
+        {data.room.status !== "playing" && data.room.status !== "finished" && (
+          <div className="action-panel">
+            <h2>{data.room.status === "cancelled" ? "بازی لغو شد" : "اتاق بسته شد"}</h2>
+            <p>امکان انجام حرکت جدید در این اتاق وجود ندارد.</p>
+          </div>
+        )}
+
+        {game.phase === "playing" && data.room.status === "playing" && (
           <div className="hand-area">
             <div className="hand-title"><span>دست شما</span><small>{myHand.length} کارت</small></div>
             <div className="sort-actions">
