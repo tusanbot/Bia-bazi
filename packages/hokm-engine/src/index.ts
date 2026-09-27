@@ -126,8 +126,9 @@ export function shuffle<T>(items: T[], random = Math.random): T[] {
   return out;
 }
 
-export function createRules(count: PlayerCount, players: GamePlayer[], targetScore: 1 | 3 | 5 | 7 = 7, variantId: HokmVariantId = "standard"): HokmRules {
+export function createRules(count: PlayerCount, players: GamePlayer[], targetScore: number = 7, variantId: HokmVariantId = "standard"): HokmRules {
   if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
+  const normalizedTargetScore = targetScore as 1 | 3 | 5 | 7;
   if (!HOKM_VARIANTS[variantId]) throw new Error("Invalid Hokm variant");
   if (players.length !== count) throw new Error("Invalid player count");
   const teams = count === 4
@@ -138,15 +139,15 @@ export function createRules(count: PlayerCount, players: GamePlayer[], targetSco
     : players.map(p => ({ id: "player-" + p.id, playerIds: [p.id] }));
 
   if (count === 2) return {
-    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore, variantId, firstDeal: 5,
+    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore: normalizedTargetScore, variantId, firstDeal: 5,
     followUpDeals: [], teams, removedCards: 0, twoPlayerStockDraw: true
   };
   if (count === 3) return {
-    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore, variantId, firstDeal: 5,
+    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore: normalizedTargetScore, variantId, firstDeal: 5,
     followUpDeals: [4,4,4], teams, removedCards: 1, twoPlayerStockDraw: false
   };
   return {
-    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore, variantId, firstDeal: 5,
+    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore: normalizedTargetScore, variantId, firstDeal: 5,
     followUpDeals: [4,4], teams, removedCards: 0, twoPlayerStockDraw: false
   };
 }
@@ -199,7 +200,7 @@ export function buildInitialState(
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
-  const rules = createRules(count, players, targetScore as 1 | 3 | 5 | 7, variantId);
+  const rules = createRules(count, players, targetScore, variantId);
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
 
