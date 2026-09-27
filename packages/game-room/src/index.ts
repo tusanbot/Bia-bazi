@@ -15,6 +15,8 @@ export interface GameRoomConfig {
   maxPlayers: number;
   /** Game-specific settings persisted with the room. */
   targetScore?: 1 | 3 | 5 | 7;
+  /** Game-specific variant persisted with the room. */
+  variantId?: string;
 }
 
 export interface GameRoomState {
