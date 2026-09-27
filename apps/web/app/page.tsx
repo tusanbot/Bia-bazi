@@ -192,7 +192,7 @@ export default function Home() {
 
       <section>
         <div className="section-title"><h2>بازی‌ها</h2><span>۱ بازی فعال</span></div>
-        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={createRoom} />
+        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={createRoom} learnHref="/games/hokm/learn" />
       </section>
 
       {creating && !groupLaunch && <div className="mode-hint">در حال ساخت اتاق...</div>}
