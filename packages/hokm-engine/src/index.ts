@@ -199,7 +199,7 @@ export function buildInitialState(
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
-  const rules = createRules(count, players, targetScore, variantId);
+  const rules = createRules(count, players, targetScore as 1 | 3 | 5 | 7, variantId);
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
 
