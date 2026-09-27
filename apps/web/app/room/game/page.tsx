@@ -7,7 +7,7 @@ type Suit = "spades" | "hearts" | "diamonds" | "clubs";
 type Card = { id: string; suit: Suit; rank: number };
 type Player = { id: string; seat: number; displayName: string };
 type Game = {
-  rules: { playerCount: number; cardsPerPlayer: number };
+  rules: { playerCount: number; cardsPerPlayer: number; targetScore?: 1 | 3 | 5 | 7 };
   players: Player[];
   hokmPlayerId: string;
   hokm?: Suit;
@@ -209,7 +209,7 @@ export default function HokmGamePage() {
       <header className="hero">
         <div className="brand-mark">🃏</div>
         <div>
-          <div className="eyebrow">HOKM · {game.rules.playerCount} PLAYER</div>
+          <div className="eyebrow">HOKM · {game.rules.playerCount} PLAYER · {game.rules.targetScore ?? 7} دور</div>
           <h1>حکم</h1>
           <p className="current-trump">{game.hokm ? `حکم: ${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : "در انتظار انتخاب حکم"}</p>
         </div>
