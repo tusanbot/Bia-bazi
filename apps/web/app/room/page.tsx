@@ -245,6 +245,13 @@ export default function RoomPage() {
         )}
 
         {isHost && room.status === "waiting" && (
+          <div className="management-actions room-waiting-management">
+            <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو اتاق</button>
+            <button className="secondary danger" disabled={busy} onClick={() => act({ type: "close_room" })}>بستن اتاق</button>
+          </div>
+        )}
+
+        {isHost && room.status === "waiting" && (
           <button
             className="primary wide"
             disabled={busy || room.players.length !== room.config.playerCount}
