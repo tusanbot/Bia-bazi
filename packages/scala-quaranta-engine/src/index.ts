@@ -356,6 +356,9 @@ export function discard(state: ScalaState, playerId: PlayerId, cardId: string): 
     throw new Error("You cannot immediately discard the card you took from the discard pile");
   }
   if (!next.opened[playerId]) {
+    if (next.lastDraw?.playerId === playerId && next.lastDraw.source === "discard") {
+      throw new Error("If you take the discard pile before opening, you must open before discarding");
+    }
     if (card.joker || next.table.some(m => canAddCardToMeld(card, m))) {
       throw new Error("Before opening, you cannot discard a joker or a card that fits an existing meld");
     }
