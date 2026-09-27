@@ -727,6 +727,8 @@ export class GameRoomDurableObject {
               this.room.finish();
               await this.persistRoom();
               await this.persistGameResult(this.game);
+              await this.recordFinalResult(this.game);
+              await this.notifyGroupResult(this.game);
             }
           }
           break;
@@ -750,6 +752,8 @@ export class GameRoomDurableObject {
             this.room.finish();
             await this.persistRoom();
             await this.persistGameResult(this.game);
+            await this.recordFinalResult(this.game);
+            await this.notifyGroupResult(this.game);
           }
           break;
 
@@ -793,6 +797,43 @@ export class GameRoomDurableObject {
         { error: error instanceof Error ? error.message : "Unknown error" },
         { status: 400 }
       );
+    }
+  }
+
+  private async notifyGroupResult(game: HokmState) {
+    const roomId = this.room?.getState().id ?? "";
+    const match = /^group-(-?\\d+)-hokm4$/.exec(roomId);
+    if (!match) return;
+
+    const chatId = match[1];
+    const ranking = game.players
+      .map(player => ({ player, score: game.scores[player.id] ?? 0 }))
+      .sort((a, b) => b.score - a.score);
+
+    const lines = ranking.map((item, index) => {
+      const name = item.player.displayName || item.player.username || "بازیکن";
+      const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "▫️";
+      return `${medal} ${index + 1}. ${name} — ${item.score} امتیاز`;
+    });
+
+    const winner = ranking[0]?.player.displayName || ranking[0]?.player.username || "بازیکن";
+    const text = [
+      "🏆 نتیجه نهایی بازی حکم",
+      "",
+      ...lines,
+      "",
+      `برنده: ${winner}`,
+      "بازی بعدی را می‌توانید از داخل بیا بازی شروع کنید."
+    ].join("\\n");
+
+    try {
+      await telegramBotApi(this.env.TELEGRAM_BOT_TOKEN, "sendMessage", {
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true
+      });
+    } catch {
+      // Group notification must never break or roll back a completed game.
     }
   }
 
@@ -884,6 +925,63 @@ async function handleTelegramWebhook(request: Request, env: Env) {
   }
 
   const message = update.message;
+  if (message?.text && message.from && (message.chat.type === "private" || message.chat.type === "channel")) {
+    const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
+    const userName = botUserName(message.from);
+
+    if (command === "/start") {
+      const link = `https://t.me/${username}?startapp=home`;
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
+        chat_id: message.chat.id,
+        text: `سلام ${userName}\\n\\nبه «بیا بازی» خوش آمدید.\\n\\nبازی کن، رقابت کن و رکورد بزن.\\n\\nاز منوی زیر وارد بازی شوید یا برای بازی حکم از دستور /hokm در گروه استفاده کنید.`,
+        reply_markup: { inline_keyboard: [[{ text: "ورود به بیا بازی", url: link }], [{ text: "راهنما", callback_data: "help" }]] }
+      });
+      return Response.json({ ok: true });
+    }
+
+    if (command === "/help") {
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
+        chat_id: message.chat.id,
+        text: "راهنمای بیا بازی\\n\\n• بازی‌ها داخل Mini App اجرا می‌شوند.\\n• نتیجه هر بازی ثبت می‌شود.\\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\\n• برای مشاهده آمار خودتان، /profile را بزنید.\\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.",
+        disable_web_page_preview: true
+      });
+      return Response.json({ ok: true });
+    }
+
+    if (command === "/profile") {
+      if (!env.DB) {
+        await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: message.chat.id, text: "اطلاعات آماری فعلاً در دسترس نیست." });
+        return Response.json({ ok: true });
+      }
+      const row = await env.DB.prepare(
+        "SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id WHERE u.telegram_id = ? LIMIT 1"
+      ).bind(message.from.id).first<any>();
+      const p = row || { displayName: userName, rating: 1000, gamesPlayed: 0, wins: 0, losses: 0, draws: 0, currentStreak: 0, bestStreak: 0, bestScore: 0 };
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
+        chat_id: message.chat.id,
+        text: `👤 پروفایل ${p.displayName}\\n\\nامتیاز: ${p.rating}\\nبازی: ${p.gamesPlayed}\\nبرد: ${p.wins}\\nباخت: ${p.losses}\\nرکورد برد متوالی: ${p.bestStreak}\\nبهترین امتیاز بازی: ${p.bestScore}`
+      });
+      return Response.json({ ok: true });
+    }
+
+    if (command === "/rank") {
+      if (!env.DB) {
+        await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: message.chat.id, text: "رتبه‌بندی فعلاً در دسترس نیست." });
+        return Response.json({ ok: true });
+      }
+      const rows = await env.DB.prepare(
+        "SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10"
+      ).all();
+      const lines = (rows.results || []).map((r:any, i:number) => `${i+1}. ${r.displayName} — ${r.rating} امتیاز · ${r.wins} برد`);
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
+        chat_id: message.chat.id,
+        text: "🏆 رتبه‌بندی بیا بازی\\n\\n" + (lines.length ? lines.join("\\n") : "هنوز رکوردی ثبت نشده است.")
+      });
+      return Response.json({ ok: true });
+    }
+  }
+
+  const message = update.message;
   if (message?.text && message.from && (message.chat.type === "group" || message.chat.type === "supergroup")) {
     const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
     if (command === "/hokm") {
@@ -908,8 +1006,11 @@ export default {
       if (!env.TELEGRAM_WEBHOOK_SECRET || setupSecret !== env.TELEGRAM_WEBHOOK_SECRET) return Response.json({ error: "Unauthorized" }, { status: 401 });
       const webhookUrl = new URL("/telegram/webhook", url.origin).toString();
       const commands = [
+        { command: "start", description: "باز کردن بیا بازی" },
         { command: "hokm", description: "ساخت اتاق بازی حکم در گروه" },
-        { command: "start", description: "باز کردن بیا بازی" }
+        { command: "profile", description: "نمایش پروفایل و آمار بازی" },
+        { command: "rank", description: "نمایش رتبه‌بندی بازیکنان" },
+        { command: "help", description: "راهنمای استفاده از بیا بازی" }
       ];
       const [webhook, commandResult] = await Promise.all([
         telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setWebhook", { url: webhookUrl, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "inline_query"] }),
@@ -937,7 +1038,7 @@ export default {
       await verifyTelegramInitData(initData, env.TELEGRAM_BOT_TOKEN);
       if (env.DB) {
         const rows = await env.DB.prepare(
-          "SELECT u.telegram_id AS playerId, COALESCE(u.first_name || ' ' || u.last_name, u.username, 'بازیکن') AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
+          "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
         ).all();
         return Response.json({ ranking: rows.results });
       }
@@ -946,6 +1047,58 @@ export default {
         method: "GET",
         headers: { "x-telegram-init-data": initData, "x-room-registry-request": "1" }
       });
+    }
+
+    if (url.pathname === "/api/profile") {
+      const initData = request.headers.get("x-telegram-init-data") || "";
+      if (!initData) return Response.json({ error: "Telegram authentication required" }, { status: 401 });
+      const telegramUser = await verifyTelegramInitData(initData, env.TELEGRAM_BOT_TOKEN);
+
+      if (!env.DB) {
+        return Response.json({
+          profile: {
+            playerId: telegramUser.id,
+            displayName: displayName(telegramUser),
+            rating: 1000,
+            gamesPlayed: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            currentStreak: 0,
+            bestStreak: 0,
+            bestScore: 0,
+            rank: null
+          }
+        });
+      }
+
+      const row = await env.DB.prepare(
+        "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id WHERE u.telegram_id = ? LIMIT 1"
+      ).bind(telegramUser.id).first();
+
+      if (!row) {
+        return Response.json({
+          profile: {
+            playerId: telegramUser.id,
+            displayName: displayName(telegramUser),
+            rating: 1000,
+            gamesPlayed: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            currentStreak: 0,
+            bestStreak: 0,
+            bestScore: 0,
+            rank: null
+          }
+        });
+      }
+
+      const rankRow = await env.DB.prepare(
+        "SELECT COUNT(*) + 1 AS rank FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.rating > (SELECT rating FROM player_stats ps JOIN users pu ON pu.id = ps.user_id WHERE pu.telegram_id = ?)"
+      ).bind(telegramUser.id).first<{ rank: number }>();
+
+      return Response.json({ profile: { ...row, rank: rankRow?.rank ?? null } });
     }
 
     if (url.pathname === "/api/mini-app-link") {
