@@ -183,9 +183,9 @@ export default function Home() {
           <div className="active-rooms">
             {activeRooms.map(room => (
               <div className="active-room" key={room.id}>
-                <div className="active-room-icon">🃏</div>
+                <div className="active-room-icon">{room.gameId === "scala_quaranta" ? "🂡" : "🃏"}</div>
                 <div className="active-room-copy">
-                  <strong>حکم {room.playerCount} نفره</strong>
+                  <strong>{room.gameId === "scala_quaranta" ? "اسکالا کوآرانتا" : "حکم"} {room.playerCount} نفره</strong>
                   <span>{room.currentPlayers} / {room.playerCount} بازیکن · میزبان {room.hostName}</span>
                 </div>
                 <button className="secondary" onClick={() => router.push(`/room?room=${encodeURIComponent(room.id)}`)}>ورود</button>
