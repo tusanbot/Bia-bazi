@@ -122,9 +122,10 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!fromGame && (data?.room.status === "playing" || data?.room.status === "finished")) {
-      router.replace(`/room/game?room=${encodeURIComponent(roomId)}`);
+      const target = data.room.config.gameId === "scala_quaranta" ? "/room/scala" : "/room/game";
+      router.replace(target + "?room=" + encodeURIComponent(roomId));
     }
-  }, [data?.room.status, roomId, router, fromGame]);
+  }, [data?.room.status, data?.room.config.gameId, roomId, router, fromGame]);
 
   async function shareRoom() {
     if (!inviteLink) return;
@@ -157,7 +158,8 @@ export default function RoomPage() {
   const isHost = room.hostId === playerId;
   const canChange = room.status === "waiting" && isHost;
   const targetScores = [1, 3, 5, 7] as const;
-  const selectedVariant = HOKM_VARIANTS[room.config.variantId ?? "standard"];
+  const selectedVariant = room.config.gameId === "hokm" ? HOKM_VARIANTS[room.config.variantId ?? "standard"] : null;
+  const isScala = room.config.gameId === "scala_quaranta";
 
   return (
     <main className="shell">
@@ -165,8 +167,8 @@ export default function RoomPage() {
         <div className="brand-mark">🃏</div>
         <div>
           <div className="eyebrow">ROOM</div>
-          <h1>اتاق حکم</h1>
-          <p>{room.config.playerCount} نفره · {room.config.targetScore ?? 7} دور · {selectedVariant.title} · کد اتاق {room.id.slice(-6)}</p>
+          <h1>{isScala ? "اتاق اسکالا کوآرانتا" : "اتاق حکم"}</h1>
+          <p>{room.config.playerCount} نفره · {isScala ? "۱۰۱ امتیازی" : `${room.config.targetScore ?? 7} دور · ${selectedVariant?.title ?? "استاندارد"}`} · کد اتاق {room.id.slice(-6)}</p>
         </div>
       </header>
 
@@ -242,7 +244,7 @@ export default function RoomPage() {
                 {variant.title}
               </button>
             ))}
-            <div className="mode-hint"><strong>{selectedVariant.title}:</strong> {selectedVariant.shortDescription}</div>
+            <div className="mode-hint"><strong>{selectedVariant?.title}:</strong> {selectedVariant?.shortDescription}</div>
           </div>
         )}
 
