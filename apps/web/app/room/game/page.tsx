@@ -84,7 +84,7 @@ export default function HokmGamePage() {
     if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
-  }, []);
+  }, [fetchWithTimeout]);
 
   const playerId = user ? String(user.id) : "";
   useEffect(() => {
@@ -94,16 +94,37 @@ export default function HokmGamePage() {
 
 
 
+  const fetchWithTimeout = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10000);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("ارتباط با سرور بازی بیش از ۱۰ ثانیه طول کشید. اتصال شبکه یا آدرس API را بررسی کنید.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     const initData = window.Telegram?.WebApp?.initData ?? "";
-    const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+    const res = await fetchWithTimeout(`/api/room?room=${encodeURIComponent(roomId)}`, {
       cache: "no-store",
       headers: initData ? { "x-telegram-init-data": initData } : {}
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "خطا در دریافت وضعیت بازی");
+    let json: Payload;
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error(`سرور بازی پاسخ قابل‌خواندن برنگرداند (HTTP ${res.status}).`);
+    }
+    if (!res.ok) throw new Error(json.error || `خطا در دریافت وضعیت بازی (HTTP ${res.status})`);
     setData(json);
-  }, [roomId]);
+    setError("");
+  }, [fetchWithTimeout, roomId]);
 
   useEffect(() => {
     if (!ready || !roomId) return;
@@ -116,12 +137,17 @@ export default function HokmGamePage() {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+      const res = await fetchWithTimeout(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
       });
-      const json = await res.json();
+      let json: Payload;
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`سرور بازی پاسخ قابل‌خواندن برنگرداند (HTTP ${res.status}).`);
+      }
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
       setData(json);
       setSelected([]);
