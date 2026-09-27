@@ -1,6 +1,6 @@
 import type { GamePlayer } from "@bia-bazi/game-engine";
 
-export type RoomStatus = "waiting" | "starting" | "playing" | "finished" | "cancelled";
+export type RoomStatus = "waiting" | "starting" | "playing" | "finished" | "cancelled" | "closed";
 
 export interface RoomPlayer extends GamePlayer {
   username?: string;
@@ -128,6 +128,24 @@ export class GameRoom {
   finish(now = Date.now()): GameRoomState {
     if (this.state.status !== "playing") throw new Error("Room is not playing");
     this.state.status = "finished";
+    this.state.finishedAt = now;
+    return this.getState();
+  }
+
+  cancel(now = Date.now()): GameRoomState {
+    if (this.state.status === "finished" || this.state.status === "cancelled" || this.state.status === "closed") {
+      throw new Error("Room is already closed");
+    }
+    this.state.status = "cancelled";
+    this.state.finishedAt = now;
+    return this.getState();
+  }
+
+  close(now = Date.now()): GameRoomState {
+    if (this.state.status === "finished" || this.state.status === "cancelled" || this.state.status === "closed") {
+      throw new Error("Room is already closed");
+    }
+    this.state.status = "closed";
     this.state.finishedAt = now;
     return this.getState();
   }
