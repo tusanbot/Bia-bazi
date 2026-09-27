@@ -142,7 +142,10 @@ export function validateMeld(meld: Meld, rules = SCALA_RULES): boolean {
       candidateSequences.push(Array.from({ length }, (_, i) => start + i));
     }
   }
-  candidateSequences.push([12, 13, 14]);
+  for (let start = 2; start <= 12; start++) {
+    const highAceLength = 15 - start;
+    candidateSequences.push([...Array.from({ length: highAceLength - 1 }, (_, i) => start + i), 14]);
+  }
 
   return candidateSequences.some(sequence => {
     if (sequence.length !== meld.cards.length) return false;
