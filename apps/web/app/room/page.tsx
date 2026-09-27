@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../lib/telegram";
+import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type RoomPlayer = {
   id: string;
@@ -15,7 +16,7 @@ type Room = {
   id: string;
   status: "waiting" | "starting" | "playing" | "finished" | "cancelled";
   hostId: string;
-  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number; targetScore?: 1 | 3 | 5 | 7 };
+  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number; targetScore?: 1 | 3 | 5 | 7; variantId?: HokmVariantId };
   players: RoomPlayer[];
 };
 
@@ -156,6 +157,7 @@ export default function RoomPage() {
   const isHost = room.hostId === playerId;
   const canChange = room.status === "waiting" && isHost;
   const targetScores = [1, 3, 5, 7] as const;
+  const selectedVariant = HOKM_VARIANTS[room.config.variantId ?? "standard"];
 
   return (
     <main className="shell">
@@ -164,7 +166,7 @@ export default function RoomPage() {
         <div>
           <div className="eyebrow">ROOM</div>
           <h1>اتاق حکم</h1>
-          <p>{room.config.playerCount} نفره · {room.config.targetScore ?? 7} دور · کد اتاق {room.id.slice(-6)}</p>
+          <p>{room.config.playerCount} نفره · {room.config.targetScore ?? 7} دور · {selectedVariant.title} · کد اتاق {room.id.slice(-6)}</p>
         </div>
       </header>
 
@@ -223,6 +225,24 @@ export default function RoomPage() {
                 {score} دور
               </button>
             ))}
+          </div>
+        )}
+
+        {canChange && (
+          <div className="room-actions variant-actions">
+            <span>نوع حکم:</span>
+            {(Object.values(HOKM_VARIANTS) as typeof HOKM_VARIANTS[HokmVariantId][]).map(variant => (
+              <button
+                key={variant.id}
+                className={room.config.variantId === variant.id || (!room.config.variantId && variant.id === "standard") ? "mode-chip selected" : "mode-chip"}
+                disabled={busy}
+                onClick={() => act({ type: "set_variant", variantId: variant.id })}
+                title={variant.shortDescription}
+              >
+                {variant.title}
+              </button>
+            ))}
+            <div className="mode-hint"><strong>{selectedVariant.title}:</strong> {selectedVariant.shortDescription}</div>
           </div>
         )}
 
