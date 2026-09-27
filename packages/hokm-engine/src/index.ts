@@ -126,7 +126,7 @@ export function shuffle<T>(items: T[], random = Math.random): T[] {
   return out;
 }
 
-export function createRules(count: PlayerCount, players: GamePlayer[], targetScore = 7, variantId: HokmVariantId = "standard"): HokmRules {
+export function createRules(count: PlayerCount, players: GamePlayer[], targetScore: 1 | 3 | 5 | 7 = 7, variantId: HokmVariantId = "standard"): HokmRules {
   if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
   if (!HOKM_VARIANTS[variantId]) throw new Error("Invalid Hokm variant");
   if (players.length !== count) throw new Error("Invalid player count");
