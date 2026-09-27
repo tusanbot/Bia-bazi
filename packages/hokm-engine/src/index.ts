@@ -12,7 +12,7 @@ export interface HokmRules {
   cardsPerPlayer: 13 | 17;
   targetTricks: 7;
   /** Number of points/hands required to finish the match. */
-  targetScore: 7;
+  targetScore: 1 | 3 | 5 | 7;
   firstDeal: 5;
   followUpDeals: number[];
   teams: Team[];
