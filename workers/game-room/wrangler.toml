@@ -21,3 +21,4 @@ enabled = true
 
 [vars]
 # Set with: wrangler secret put TELEGRAM_BOT_TOKEN
+# Set with: wrangler secret put TELEGRAM_WEBHOOK_SECRET
