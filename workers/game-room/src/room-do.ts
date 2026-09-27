@@ -9,7 +9,10 @@ import {
   createHokmRoom,
   type HokmPlayerCount,
   type HokmState,
-  type Suit
+  type Suit,
+  type HokmVariantId,
+  getHokmVariant,
+  startNoTrumpVariant
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 
@@ -82,8 +85,9 @@ type Action =
   | { type: "leave"; playerId: string; initData: string }
   | { type: "change_player_count"; playerCount: HokmPlayerCount; initData: string }
   | { type: "set_target_score"; targetScore: 1 | 3 | 5 | 7; initData: string }
+  | { type: "set_variant"; variantId: HokmVariantId; initData: string }
   | { type: "start"; initData: string }
-  | { type: "choose_hokm"; playerId: string; suit: Suit; initData: string }
+  | { type: "choose_hokm"; playerId: string; suit?: Suit; initData: string }
   | { type: "discard_two"; playerId: string; cardIds: string[]; initData: string }
   | { type: "draw_two"; playerId: string; keep: boolean; initData: string }
   | { type: "play_card"; playerId: string; cardId: string; initData: string }
@@ -653,6 +657,17 @@ export class GameRoomDurableObject {
           }
           break;
 
+        case "set_variant":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can change the game variant");
+          if (this.room.getState().status !== "waiting") throw new Error("Game variant can only be changed before the game starts");
+          if (this.room.getState().config.gameId !== "hokm") throw new Error("Unsupported game variant");
+          {
+            const roomState = this.room.getState();
+            roomState.config.variantId = getHokmVariant(action.variantId).id;
+            this.room = new GameRoom(roomState);
+          }
+          break;
+
         case "start": {
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
@@ -670,8 +685,11 @@ export class GameRoomDurableObject {
             initialHokmPlayerId,
             Math.random,
             this.room.getState().config.targetScore ?? 7,
-            0
+            0,
+            getHokmVariant((this.room.getState().config.variantId as HokmVariantId) || "standard").id
           );
+          const variant = getHokmVariant(this.game.rules.variantId);
+          if (!variant.hasTrump) this.game = startNoTrumpVariant(this.game);
           this.room.markPlaying();
           break;
         }
