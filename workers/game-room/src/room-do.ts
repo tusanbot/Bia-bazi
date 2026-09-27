@@ -551,7 +551,7 @@ export class GameRoomDurableObject {
       if (action.type === "create_group_room" || action.type === "create_inline_room") {
         if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
         const roomId = action.type === "create_group_room" ? `group-${action.chatId}-hokm4` : `inline-${action.hostId}-${Date.now().toString(36)}`;
-        if (!this.room) {
+        if (!this.room || !["waiting", "playing"].includes(this.room.getState().status)) {
           this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
           await this.persistRoom();
           await this.save();
