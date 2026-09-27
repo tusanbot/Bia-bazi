@@ -98,7 +98,7 @@ type Action =
   | { type: "state" }
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
-  | { type: "change_player_count"; playerCount: HokmPlayerCount; initData: string }
+  | { type: "change_player_count"; playerCount: number; initData: string }
   | { type: "set_target_score"; targetScore: 1 | 3 | 5 | 7; initData: string }
   | { type: "set_variant"; variantId: HokmVariantId; initData: string }
   | { type: "start"; initData: string }
