@@ -19,6 +19,7 @@ export default function Home() {
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const [groupLaunch, setGroupLaunch] = useState(false);
   const [activeRooms, setActiveRooms] = useState<Array<{ id: string; gameId: string; playerCount: number; currentPlayers: number; hostName: string }>>([]);
+  const [profileStats, setProfileStats] = useState<{ gamesPlayed: number; wins: number; rating: number } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,6 +34,10 @@ export default function Home() {
 
     if (currentUser) {
       const initData = window.Telegram?.WebApp?.initData ?? "";
+      fetch("/api/profile", { headers: { "x-telegram-init-data": initData }, cache: "no-store" })
+        .then(res => res.ok ? res.json() : Promise.reject(new Error()))
+        .then(json => setProfileStats(json.profile))
+        .catch(() => setProfileStats(null));
       fetch("/api/rooms", { headers: { "x-telegram-init-data": initData }, cache: "no-store" })
         .then(res => res.ok ? res.json() : Promise.reject(new Error()))
         .then(json => setActiveRooms(json.rooms ?? []))
@@ -194,7 +199,7 @@ export default function Home() {
       {error && <div className="error">{error}</div>}
       <div className="mode-hint">حالت انتخاب‌شده: <strong>حکم {hokmMode} نفره</strong></div>
 
-      <section className="stats"><div><b>۰</b><span>بازی</span></div><div><b>۰</b><span>برد</span></div><div><b>۰</b><span>امتیاز</span></div></section>
+      <section className="stats"><div><b>{profileStats?.gamesPlayed ?? 0}</b><span>بازی</span></div><div><b>{profileStats?.wins ?? 0}</b><span>برد</span></div><div><b>{profileStats?.rating ?? 1000}</b><span>امتیاز</span></div></section>
 
       <nav className="bottom-nav">
         <Link className="active" href="/">خانه</Link>
