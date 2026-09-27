@@ -576,6 +576,13 @@ export class GameRoomDurableObject {
 
       if (!this.room) throw new Error("Room does not exist");
 
+      if (
+        ["choose_hokm", "discard_two", "draw_two", "play_card", "next_hand"].includes(action.type) &&
+        this.room.getState().status !== "playing"
+      ) {
+        throw new Error("Room is no longer playing");
+      }
+
       switch (action.type) {
         case "join":
           this.room.join({
