@@ -657,10 +657,17 @@ export class GameRoomDurableObject {
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
           const players = this.room.getState().players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
+          // The host starts the match, but does not automatically become Hakem.
+          // Pick the initial Hakem randomly from all players so joining order
+          // cannot determine the first Hakem.
+          const randomBytes = new Uint32Array(1);
+          crypto.getRandomValues(randomBytes);
+          const initialHokmIndex = randomBytes[0] % players.length;
+          const initialHokmPlayerId = players[initialHokmIndex].id;
           this.game = buildInitialState(
             players,
-            userId,
-            userId,
+            initialHokmPlayerId,
+            initialHokmPlayerId,
             Math.random,
             this.room.getState().config.targetScore ?? 7,
             0
