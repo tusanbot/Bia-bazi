@@ -74,6 +74,8 @@ type TelegramUser = {
 type Action =
   | { type: "create"; gameId: "hokm"; playerCount: HokmPlayerCount; host: unknown; initData: string }
   | { type: "create_or_join_group"; gameId: "hokm"; playerCount: HokmPlayerCount; initData: string }
+  | { type: "create_group_room"; gameId: "hokm"; playerCount: HokmPlayerCount; chatId: string; hostId: string; hostName: string }
+  | { type: "create_inline_room"; gameId: "hokm"; playerCount: HokmPlayerCount; hostId: string; hostName: string }
   | { type: "state" }
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
@@ -414,6 +416,11 @@ export class GameRoomDurableObject {
 
   async fetch(request: Request): Promise<Response> {
     try {
+      if (request.headers.get("x-room-health-check") === "1") {
+        await this.load();
+        return Response.json({ exists: Boolean(this.room), status: this.room?.getState().status ?? null });
+      }
+
       const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
 
       const isRegistryRequest =
@@ -491,9 +498,29 @@ export class GameRoomDurableObject {
 
         if (request.method === "GET") {
           const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
-          const active = Object.values(rooms)
-            .filter(room => Date.now() - room.updatedAt < 24 * 60 * 60 * 1000)
-            .sort((a, b) => b.updatedAt - a.updatedAt);
+          const active = [] as ActiveRoom[];
+          for (const room of Object.values(rooms)) {
+            if (Date.now() - room.updatedAt >= 24 * 60 * 60 * 1000) {
+              delete rooms[room.id];
+              continue;
+            }
+            try {
+              const roomId = this.env.GAME_ROOM.idFromName(room.id);
+              const health = await this.env.GAME_ROOM.get(roomId).fetch("https://internal/health", { headers: { "x-room-health-check": "1" } });
+              const healthJson = await health.json() as { exists?: boolean; status?: string | null };
+              if (!healthJson.exists || !["waiting", "playing"].includes(healthJson.status || "")) {
+                delete rooms[room.id];
+                continue;
+              }
+              const cleanedRoom = { ...room, status: healthJson.status as ActiveRoom["status"], updatedAt: Date.now() };
+              active.push(cleanedRoom);
+              rooms[room.id] = cleanedRoom;
+            } catch {
+              delete rooms[room.id];
+            }
+          }
+          await this.state.storage.put("rooms", rooms);
+          active.sort((a, b) => b.updatedAt - a.updatedAt);
           return Response.json({ rooms: active });
         }
 
@@ -547,6 +574,20 @@ export class GameRoomDurableObject {
       await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null }, { status: 201 });
+      }
+
+      if (action.type === "create_group_room" || action.type === "create_inline_room") {
+        if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
+        const roomId = action.type === "create_group_room"
+          ? `group-${action.chatId}-hokm4`
+          : `inline-${action.hostId}-${Date.now().toString(36)}`;
+        if (!this.room) {
+          this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
+          await this.persistRoom();
+          await this.save();
+          await this.syncRegistry();
+        }
+        return Response.json({ room: this.room.getState(), game: null });
       }
 
       if (action.type === "create_or_join_group") {
