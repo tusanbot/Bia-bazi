@@ -33,6 +33,7 @@ export default function RoomPage() {
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const [inviteLink, setInviteLink] = useState("");
   const [shareState, setShareState] = useState("");
+  const [fromGame, setFromGame] = useState(false);
 
   useEffect(() => {
     initTelegram();
@@ -45,6 +46,7 @@ export default function RoomPage() {
     const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
     const savedRoom = window.localStorage.getItem("bia-bazi:last-room") ?? "";
     const room = queryRoom || startRoom || savedRoom;
+    setFromGame(new URLSearchParams(window.location.search).get("from") === "game");
     if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
@@ -118,10 +120,10 @@ export default function RoomPage() {
   }
 
   useEffect(() => {
-    if (data?.room.status === "playing" || data?.room.status === "finished") {
+    if (!fromGame && (data?.room.status === "playing" || data?.room.status === "finished")) {
       router.replace(`/room/game?room=${encodeURIComponent(roomId)}`);
     }
-  }, [data?.room.status, roomId, router]);
+  }, [data?.room.status, roomId, router, fromGame]);
 
   async function shareRoom() {
     if (!inviteLink) return;
@@ -165,6 +167,8 @@ export default function RoomPage() {
           <p>{room.config.playerCount} نفره · {room.config.targetScore ?? 7} دور · کد اتاق {room.id.slice(-6)}</p>
         </div>
       </header>
+
+      <div className="room-navigation"><button className="secondary" onClick={() => router.replace("/")}>بازگشت به صفحه اصلی</button></div>
 
       <section className="room-panel">
         <div className="room-status">
