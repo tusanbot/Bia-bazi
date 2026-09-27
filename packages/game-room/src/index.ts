@@ -13,6 +13,8 @@ export interface GameRoomConfig {
   playerCount: number;
   minPlayers: number;
   maxPlayers: number;
+  /** Game-specific settings persisted with the room. */
+  targetScore?: 1 | 3 | 5 | 7;
 }
 
 export interface GameRoomState {
