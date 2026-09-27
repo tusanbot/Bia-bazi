@@ -11,6 +11,8 @@ export interface HokmRules {
   playerCount: PlayerCount;
   cardsPerPlayer: 13 | 17;
   targetTricks: 7;
+  /** Number of points/hands required to finish the match. */
+  targetScore: 7;
   firstDeal: 5;
   followUpDeals: number[];
   teams: Team[];
@@ -51,6 +53,10 @@ export interface HokmState {
   twoPlayerBuild?: TwoPlayerBuild;
   leaderId: PlayerId;
   turnPlayerId: PlayerId;
+  /** Number of completed hands in this match. */
+  handsCompleted: number;
+  /** Prevent card selection during the short transition into a fresh hand. */
+  turnUnlockAt: number;
 }
 
 const suits: Suit[] = ["spades", "hearts", "diamonds", "clubs"];
@@ -69,7 +75,8 @@ export function shuffle<T>(items: T[], random = Math.random): T[] {
   return out;
 }
 
-export function createRules(count: PlayerCount, players: GamePlayer[]): HokmRules {
+export function createRules(count: PlayerCount, players: GamePlayer[], targetScore = 7): HokmRules {
+  if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
   if (players.length !== count) throw new Error("Invalid player count");
   const teams = count === 4
     ? [
@@ -79,15 +86,15 @@ export function createRules(count: PlayerCount, players: GamePlayer[]): HokmRule
     : players.map(p => ({ id: "player-" + p.id, playerIds: [p.id] }));
 
   if (count === 2) return {
-    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, firstDeal: 5,
+    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore: 7, firstDeal: 5,
     followUpDeals: [], teams, removedCards: 0, twoPlayerStockDraw: true
   };
   if (count === 3) return {
-    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, firstDeal: 5,
+    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore: 7, firstDeal: 5,
     followUpDeals: [4,4,4], teams, removedCards: 1, twoPlayerStockDraw: false
   };
   return {
-    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, firstDeal: 5,
+    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore: 7, firstDeal: 5,
     followUpDeals: [4,4], teams, removedCards: 0, twoPlayerStockDraw: false
   };
 }
@@ -132,11 +139,13 @@ export function buildInitialState(
   players: GamePlayer[],
   dealerId: PlayerId,
   hokmPlayerId: PlayerId,
-  random = Math.random
+  random = Math.random,
+  targetScore = 7,
+  handsCompleted = 0
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
-  const rules = createRules(count, players);
+  const rules = createRules(count, players, targetScore);
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
 
@@ -161,7 +170,10 @@ export function buildInitialState(
     teamTricks: Object.fromEntries(rules.teams.map(t => [t.id, 0])),
     scores: Object.fromEntries(players.map(p => [p.id, 0])),
     teams: rules.teams, deck, removedCards,
-    leaderId: hokmPlayerId, turnPlayerId: hokmPlayerId
+    leaderId: hokmPlayerId,
+    turnPlayerId: hokmPlayerId,
+    handsCompleted,
+    turnUnlockAt: 0
   };
 
   if (count === 2) {
@@ -434,13 +446,14 @@ export function finishHand(state: HokmState): HokmState {
   }
 
   next.handResultApplied = true;
-  if (Object.values(next.scores).some(score => score >= 7)) next.phase = "game_finished";
+  next.handsCompleted += 1;
+  if (Object.values(next.scores).some(score => score >= next.rules.targetScore)) next.phase = "game_finished";
   return next;
 }
 
 export function startNextHand(state: HokmState): HokmState {
   if (state.phase !== "hand_finished") throw new Error("Hand is not finished");
-  if (Object.values(state.scores).some(score => score >= 7)) throw new Error("Game is already finished");
+  if (Object.values(state.scores).some(score => score >= state.rules.targetScore)) throw new Error("Game is already finished");
   let dealerId = state.dealerId;
   let hokmPlayerId = state.hokmPlayerId;
 
@@ -458,7 +471,14 @@ export function startNextHand(state: HokmState): HokmState {
     hokmPlayerId = state.players[(hakemIndex + 1) % state.players.length].id;
   }
 
-  const next = buildInitialState(state.players, dealerId, hokmPlayerId);
+  const next = buildInitialState(
+    state.players,
+    dealerId,
+    hokmPlayerId,
+    Math.random,
+    state.rules.targetScore,
+    state.handsCompleted
+  );
   next.scores = structuredClone(state.scores);
   // Keep the previous hand's final trick visible during the 1-second
   // transition and until the first card of the new hand is selected.
