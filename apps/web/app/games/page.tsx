@@ -16,10 +16,10 @@ export default function GamesPage() {
     <section className="game-card">
       <div className="game-icon">🂡</div>
       <div className="game-copy">
-        <h3>اسکالا کوآرانتا</h3><p>بازی رامی با ترکیب‌های عددی و ترتیبی</p><small>۲ تا ۶ بازیکن · به‌زودی</small>
+        <h3>اسکالا کوآرانتا</h3><p>بازی رامی با ترکیب‌های عددی و ترتیبی</p><small>۲ تا ۶ بازیکن</small>
         <Link className="learn-link" href="/games/scala-quaranta/learn">آموزش بازی</Link>
       </div>
-      <span className="secondary game-coming-soon">به‌زودی</span>
+      <Link className="play" href="/?game=scala_quaranta">انتخاب</Link>
     </section>
     <nav className="bottom-nav"><Link href="/">خانه</Link><Link className="active" href="/games">بازی‌ها</Link><Link href="/leaderboard">رتبه‌بندی</Link><Link href="/profile">پروفایل</Link></nav>
   </main>;
