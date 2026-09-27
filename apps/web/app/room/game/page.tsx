@@ -70,30 +70,6 @@ export default function HokmGamePage() {
   const [sortMode, setSortMode] = useState<"original" | "value" | "suit" | "value_suit">("original");
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    initTelegram();
-    setUser(telegramUser());
-    const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
-    const startParam =
-      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
-      new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
-      "";
-    const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
-    const savedRoom = window.localStorage.getItem("bia-bazi:last-room") ?? "";
-    const room = queryRoom || startRoom || savedRoom;
-    if (room) window.localStorage.setItem("bia-bazi:last-room", room);
-    setRoomId(room);
-    setReady(true);
-  }, [fetchWithTimeout]);
-
-  const playerId = user ? String(user.id) : "";
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 200);
-    return () => window.clearInterval(timer);
-  }, []);
-
-
-
   const fetchWithTimeout = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10000);
@@ -108,6 +84,30 @@ export default function HokmGamePage() {
       window.clearTimeout(timer);
     }
   }, []);
+
+  useEffect(() => {
+    initTelegram();
+    setUser(telegramUser());
+    const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
+    const startParam =
+      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
+      new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
+      "";
+    const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
+    const savedRoom = window.localStorage.getItem("bia-bazi:last-room") ?? "";
+    const room = queryRoom || startRoom || savedRoom;
+    if (room) window.localStorage.setItem("bia-bazi:last-room", room);
+    setRoomId(room);
+    setReady(true);
+  }, []);
+
+  const playerId = user ? String(user.id) : "";
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+
 
   const refresh = useCallback(async () => {
     const initData = window.Telegram?.WebApp?.initData ?? "";
