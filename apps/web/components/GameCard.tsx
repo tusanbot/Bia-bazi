@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type Props = {
   emoji: string;
   title: string;
@@ -7,9 +9,10 @@ type Props = {
   selectedMode?: number;
   onModeChange?: (count: number) => void;
   onPlay?: () => void;
+  learnHref?: string;
 };
 
-export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selectedMode, onModeChange, onPlay }: Props) {
+export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selectedMode, onModeChange, onPlay, learnHref }: Props) {
   return (
     <article className="game-card">
       <div className="game-icon">{emoji}</div>
@@ -26,8 +29,12 @@ export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selec
             ))}
           </div>
         )}
+        {learnHref && (
+          <Link className="learn-link" href={learnHref}>آموزش بازی</Link>
+        )}
       </div>
       <button className="play" type="button" onClick={onPlay}>بازی</button>
     </article>
   );
 }
+
