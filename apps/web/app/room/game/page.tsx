@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
@@ -69,6 +70,7 @@ export default function HokmGamePage() {
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const [sortMode, setSortMode] = useState<"original" | "value" | "suit" | "value_suit">("original");
   const [message, setMessage] = useState("");
+  const router = useRouter();
 
   const fetchWithTimeout = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const controller = new AbortController();
@@ -232,6 +234,13 @@ export default function HokmGamePage() {
 
   return (
     <main className="shell hokm-game">
+      <div className="game-navigation">
+        <button className="secondary" disabled={busy} onClick={() => router.push(`/room?room=${encodeURIComponent(roomId)}`)}>بازگشت</button>
+        {isHost && data.room.status === "playing" && (
+          <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
+        )}
+      </div>
+
       <header className="hero">
         <div className="brand-mark">🃏</div>
         <div>
