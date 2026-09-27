@@ -181,7 +181,10 @@ function missingRunRank(meld: Meld): Rank {
 export function meldValue(meld: Meld): number {
   if (!validateMeld(meld)) throw new Error("Invalid meld");
   if (meld.type === "run") return runValue(meld);
-  return meld.cards.reduce((sum, card) => sum + cardValue(card), 0);
+  const natural = meld.cards.find(c => !c.joker);
+  if (!natural) throw new Error("Invalid set");
+  const representedValue = cardValue(natural);
+  return meld.cards.reduce((sum, card) => sum + (card.joker ? representedValue : cardValue(card)), 0);
 }
 
 export function canOpen(melds: Meld[], rules = SCALA_RULES): boolean {
