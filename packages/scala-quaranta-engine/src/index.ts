@@ -277,7 +277,6 @@ export function drawFromDeck(state: ScalaState, playerId: PlayerId): ScalaState 
 
 export function drawFromDiscard(state: ScalaState, playerId: PlayerId): ScalaState {
   requireTurn(state, playerId);
-  if (!state.opened[playerId]) throw new Error("You must open before taking the discard pile");
   if (!state.discardPile.length) throw new Error("Discard pile is empty");
   const next = structuredClone(state);
   const card = next.discardPile.pop()!;
@@ -311,6 +310,10 @@ export function layMelds(state: ScalaState, playerId: PlayerId, melds: Meld[]): 
   const remaining = removeCards(hand, allCards);
 
   if (!next.opened[playerId]) {
+    if (next.lastDraw?.playerId === playerId && next.lastDraw.source === "discard") {
+      const drawnId = next.lastDraw.cardId;
+      if (!allCards.some(card => card.id === drawnId)) throw new Error("The discarded card taken for the opening must be used in the opening");
+    }
     if (!canOpen(melds, next.rules)) throw new Error("Opening melds must total at least 40 points");
     next.opened[playerId] = true;
   } else if (melds.some(m => !validateMeld(m, next.rules))) {
@@ -378,7 +381,8 @@ export function discard(state: ScalaState, playerId: PlayerId, cardId: string): 
   next.hasTakenTurn[playerId] = true;
 
   if (next.hands[playerId].length === 0) {
-    if (!next.hasTakenTurn[next.players.find(p => p.id !== playerId)!.id]) {
+    if (card.joker) throw new Error("The final discard cannot be a joker");
+    if (next.players.some(p => !next.hasTakenTurn[p.id])) {
       throw new Error("A player cannot close before every player has taken a turn");
     }
     next.phase = "round_finished";
