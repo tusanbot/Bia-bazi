@@ -160,6 +160,7 @@ export default function RoomPage() {
   const targetScores = [1, 3, 5, 7] as const;
   const selectedVariant = room.config.gameId === "hokm" ? HOKM_VARIANTS[room.config.variantId ?? "standard"] : null;
   const isScala = room.config.gameId === "scala_quaranta";
+  const playerModes = isScala ? [2, 3, 4, 5, 6] : modes;
 
   return (
     <main className="shell">
@@ -251,7 +252,7 @@ export default function RoomPage() {
         {canChange && (
           <div className="room-actions">
             <span>تعداد بازیکن:</span>
-            {modes.map(mode => (
+            {playerModes.map(mode => (
               <button
                 key={mode}
                 className={room.config.playerCount === mode ? "mode-chip selected" : "mode-chip"}
