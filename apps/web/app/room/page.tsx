@@ -15,7 +15,7 @@ type Room = {
   id: string;
   status: "waiting" | "starting" | "playing" | "finished" | "cancelled";
   hostId: string;
-  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number };
+  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number; targetScore?: 1 | 3 | 5 | 7 };
   players: RoomPlayer[];
 };
 
@@ -153,6 +153,7 @@ export default function RoomPage() {
   const isJoined = room.players.some(p => p.id === playerId);
   const isHost = room.hostId === playerId;
   const canChange = room.status === "waiting" && isHost;
+  const targetScores = [1, 3, 5, 7] as const;
 
   return (
     <main className="shell">
@@ -161,7 +162,7 @@ export default function RoomPage() {
         <div>
           <div className="eyebrow">ROOM</div>
           <h1>اتاق حکم</h1>
-          <p>{room.config.playerCount} نفره · کد اتاق {room.id.slice(-6)}</p>
+          <p>{room.config.playerCount} نفره · {room.config.targetScore ?? 7} دور · کد اتاق {room.id.slice(-6)}</p>
         </div>
       </header>
 
@@ -207,6 +208,22 @@ export default function RoomPage() {
 
         {canChange && (
           <div className="room-actions">
+            <span>تعداد دورهای بازی:</span>
+            {targetScores.map(score => (
+              <button
+                key={score}
+                className={room.config.targetScore === score ? "mode-chip selected" : "mode-chip"}
+                disabled={busy}
+                onClick={() => act({ type: "set_target_score", targetScore: score })}
+              >
+                {score} دور
+              </button>
+            ))}
+          </div>
+        )}
+
+        {canChange && (
+          <div className="room-actions">
             <span>تعداد بازیکن:</span>
             {modes.map(mode => (
               <button
@@ -219,6 +236,12 @@ export default function RoomPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {isJoined && room.status === "waiting" && !isHost && (
+          <button className="secondary wide" disabled={busy} onClick={() => act({ type: "leave", playerId })}>
+            خروج از اتاق
+          </button>
         )}
 
         {isHost && room.status === "waiting" && (
