@@ -194,12 +194,13 @@ export function buildInitialState(
   dealerId: PlayerId,
   hokmPlayerId: PlayerId,
   random = Math.random,
-  targetScore: 1 | 3 | 5 | 7 = 7,
+  targetScore: number = 7,
   handsCompleted = 0,
   variantId: HokmVariantId = "standard"
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
+  if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
   const rules = createRules(count, players, targetScore, variantId);
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
