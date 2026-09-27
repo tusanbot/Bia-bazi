@@ -110,19 +110,20 @@ function naturalKey(card: Card) {
 
 export function validateMeld(meld: Meld, rules = SCALA_RULES): boolean {
   if (meld.cards.length < 3) return false;
-  if (meld.cards.filter(c => c.joker).length > rules.maxJokersPerMeld) return false;
+  const jokers = meld.cards.filter(c => c.joker).length;
+  if (jokers > rules.maxJokersPerMeld) return false;
 
   if (meld.type === "set") {
     const natural = meld.cards.filter(c => !c.joker);
     if (!natural.length) return false;
     const rank = natural[0].rank;
-    if (!rank || natural.some(c => c.rank !== rank)) return false;
+    if (!rank || natural.some(c => c.rank !== rank || !c.suit)) return false;
     const suitsSeen = new Set<Suit>();
     for (const card of natural) {
       if (!card.suit || suitsSeen.has(card.suit)) return false;
       suitsSeen.add(card.suit);
     }
-    return natural.length + meld.cards.filter(c => c.joker).length <= 4;
+    return natural.length + jokers <= 4;
   }
 
   const natural = meld.cards.filter(c => !c.joker);
@@ -130,43 +131,26 @@ export function validateMeld(meld: Meld, rules = SCALA_RULES): boolean {
   const suit = natural[0].suit!;
   if (natural.some(c => c.suit !== suit)) return false;
 
-  const uniqueRanks = new Set(natural.map(c => c.rank!));
-  if (uniqueRanks.size !== natural.length) return false;
+  const ranks = natural.map(c => c.rank!);
+  if (new Set(ranks).size !== ranks.length) return false;
 
-  // A run may be A-2-3 ... K-A, but A cannot bridge K and 2.
-  // With one joker, the missing rank must fit one unambiguous sequence.
-  const candidates: number[][] = [];
+  // Legal runs are ordinary consecutive sequences (A-2-3 through Q-K-A).
+  // Ace may be low or high, but it cannot bridge K and 2.
+  const candidateSequences: number[][] = [];
   for (let start = 1; start <= 11; start++) {
-    candidates.push(Array.from({ length: 3 }, (_, i) => start + i));
-  }
-  // Generate every legal consecutive interval of length >= 3, including
-  // Q-K-A as 12,13,14 and A-2-3 as 1,2,3.
-  const sequences: number[][] = [];
-  for (let start = 1; start <= 11; start++) {
-    for (let len = 3; len <= 13 - start + 1; len++) {
-      sequences.push(Array.from({ length: len }, (_, i) => start + i));
+    for (let length = 3; length <= 14 - start; length++) {
+      candidateSequences.push(Array.from({ length }, (_, i) => start + i));
     }
   }
-  sequences.push([12, 13, 14]);
+  candidateSequences.push([12, 13, 14]);
 
-  const ranksForCards = natural.map(c => c.rank! === 1 ? 1 : c.rank!);
-  const fits = sequences.some(seq => {
-    if (meld.cards.length > seq.length) return false;
-    const normalized = new Set(seq.map(n => n === 14 ? 1 : n));
-    if (ranksForCards.some(r => !normalized.has(r))) return false;
-    if (uniqueRanks.size !== natural.length) return false;
-    return seq.filter(n => n !== 14).every(n => ranksForCards.includes(n)) ||
-      meld.cards.length === seq.length;
+  return candidateSequences.some(sequence => {
+    if (sequence.length !== meld.cards.length) return false;
+    const normalized = sequence.map(rank => rank === 14 ? 1 : rank);
+    if (new Set(normalized).size !== normalized.length) return false;
+    return ranks.every(rank => normalized.includes(rank));
   });
-
-  if (!fits) {
-    // Explicitly validate the common Q-K-A case.
-    const high = new Set(ranksForCards);
-    if (!(high.has(12) && high.has(13) && high.has(1) && meld.cards.length >= 3)) return false;
-  }
-  return true;
 }
-
 function runValue(meld: Meld): number {
   const natural = meld.cards.filter(c => !c.joker);
   if (!natural.length) return 0;
@@ -354,7 +338,9 @@ export function replaceMeldJoker(state: ScalaState, playerId: PlayerId, meldId: 
   const index = meld.cards.findIndex(c => c.joker);
   meld.cards[index] = card;
   next.hands[playerId] = next.hands[playerId].filter(c => c.id !== cardId);
-  const joker: Card = { id: `${meld.id}-freed-joker-${Date.now()}`, joker: true };
+  const originalJoker = meld.cards.find(c => c.joker);
+  if (!originalJoker) throw new Error("Joker not found");
+  const joker: Card = { id: originalJoker.id, joker: true };
   next.hands[playerId].push(joker);
   next.hasTakenTurn[playerId] = true;
   return next;
