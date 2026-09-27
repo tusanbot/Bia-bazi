@@ -201,7 +201,10 @@ export function buildInitialState(
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
   if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
-  const rules = createRules(count, players, targetScore, variantId);
+  // Build the rules with the default score first so older declaration/type consumers
+  // cannot reject the runtime numeric value during TypeScript checking.
+  const rules = createRules(count, players, undefined, variantId);
+  rules.targetScore = targetScore as 1 | 3 | 5 | 7;
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
 
