@@ -15,6 +15,7 @@ type TelegramWebApp = {
   };
   ready?: () => void;
   expand?: () => void;
+  openTelegramLink?: (url: string) => void;
 };
 
 declare global {
