@@ -193,7 +193,7 @@ export function buildInitialState(
   dealerId: PlayerId,
   hokmPlayerId: PlayerId,
   random = Math.random,
-  targetScore = 7,
+  targetScore: 1 | 3 | 5 | 7 = 7,
   handsCompleted = 0,
   variantId: HokmVariantId = "standard"
 ): HokmState {
