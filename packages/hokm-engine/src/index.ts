@@ -2,6 +2,54 @@ import type { GamePlayer, PlayerId } from "@bia-bazi/game-engine";
 
 export type PlayerCount = 2 | 3 | 4;
 export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
+export type HokmVariantId = "standard" | "saras" | "naras" | "tak_bresh";
+
+export interface HokmVariantDefinition {
+  id: HokmVariantId;
+  title: string;
+  shortDescription: string;
+  fullDescription: string;
+  hasTrump: boolean;
+  reversedRanks?: boolean;
+  limitedCuts?: boolean;
+}
+
+export const HOKM_VARIANTS: Record<HokmVariantId, HokmVariantDefinition> = {
+  standard: {
+    id: "standard",
+    title: "حکم معمولی",
+    shortDescription: "حکم کلاسیک با انتخاب یک خال به‌عنوان حکم.",
+    fullDescription: "در هر دست حاکم یکی از چهار خال را به‌عنوان حکم انتخاب می‌کند. اگر خال شروع‌شده را دارید باید همان خال را بازی کنید؛ در صورت نداشتن آن خال، می‌توانید با حکم ببُرید یا کارت دیگری رد بدهید.",
+    hasTrump: true
+  },
+  saras: {
+    id: "saras",
+    title: "سرَس",
+    shortDescription: "بدون خال حکم؛ آس بالاترین کارت است.",
+    fullDescription: "در سرَس خال حکم وجود ندارد و بریدن انجام نمی‌شود. روند بازی مانند حکم معمولی و با رعایت خال شروع‌شده است، اما برنده هر دست بالاترین کارت همان خال است. ترتیب ارزش کارت‌ها از آس به ۲ است.",
+    hasTrump: false
+  },
+  naras: {
+    id: "naras",
+    title: "نرس",
+    shortDescription: "بدون خال حکم؛ ۲ بالاترین و آس پایین‌ترین است.",
+    fullDescription: "در نرس خال حکم وجود ندارد و بریدن انجام نمی‌شود. روند بازی مانند حکم معمولی و با رعایت خال شروع‌شده است، اما ارزش کارت‌ها معکوس می‌شود: ۲ بالاترین و آس پایین‌ترین کارت است.",
+    hasTrump: false,
+    reversedRanks: true
+  },
+  tak_bresh: {
+    id: "tak_bresh",
+    title: "تک‌حکم (تک‌برش)",
+    shortDescription: "خال حکم عادی است، اما هر بازیکن فقط یک بار می‌تواند با حکم ببُرد.",
+    fullDescription: "حاکم یک خال را به‌عنوان حکم انتخاب می‌کند. هر بازیکن در کل آن دست فقط یک بار اجازه دارد وقتی خال شروع‌شده را ندارد، با کارت حکم ببُرد. پیروی از خال و سایر قوانین حکم معمولی حفظ می‌شوند.",
+    hasTrump: true,
+    limitedCuts: true
+  }
+};
+
+export function getHokmVariant(id: HokmVariantId = "standard"): HokmVariantDefinition {
+  return HOKM_VARIANTS[id] ?? HOKM_VARIANTS.standard;
+}
 export type Rank = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 export interface Card { suit: Suit; rank: Rank; id: string; }
 export interface Team { id: string; playerIds: PlayerId[]; }
@@ -13,6 +61,7 @@ export interface HokmRules {
   targetTricks: 7;
   /** Number of points/hands required to finish the match. */
   targetScore: 1 | 3 | 5 | 7;
+  variantId: HokmVariantId;
   firstDeal: 5;
   followUpDeals: number[];
   teams: Team[];
@@ -57,6 +106,8 @@ export interface HokmState {
   handsCompleted: number;
   /** Prevent card selection during the short transition into a fresh hand. */
   turnUnlockAt: number;
+  /** For Tak-bresh, whether each player has already used their one allowed cut. */
+  cutUsed: Record<PlayerId, boolean>;
 }
 
 const suits: Suit[] = ["spades", "hearts", "diamonds", "clubs"];
@@ -75,8 +126,9 @@ export function shuffle<T>(items: T[], random = Math.random): T[] {
   return out;
 }
 
-export function createRules(count: PlayerCount, players: GamePlayer[], targetScore = 7): HokmRules {
+export function createRules(count: PlayerCount, players: GamePlayer[], targetScore = 7, variantId: HokmVariantId = "standard"): HokmRules {
   if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
+  if (!HOKM_VARIANTS[variantId]) throw new Error("Invalid Hokm variant");
   if (players.length !== count) throw new Error("Invalid player count");
   const teams = count === 4
     ? [
@@ -86,15 +138,15 @@ export function createRules(count: PlayerCount, players: GamePlayer[], targetSco
     : players.map(p => ({ id: "player-" + p.id, playerIds: [p.id] }));
 
   if (count === 2) return {
-    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore, firstDeal: 5,
+    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore, variantId, firstDeal: 5,
     followUpDeals: [], teams, removedCards: 0, twoPlayerStockDraw: true
   };
   if (count === 3) return {
-    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore, firstDeal: 5,
+    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore, variantId, firstDeal: 5,
     followUpDeals: [4,4,4], teams, removedCards: 1, twoPlayerStockDraw: false
   };
   return {
-    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore, firstDeal: 5,
+    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore, variantId, firstDeal: 5,
     followUpDeals: [4,4], teams, removedCards: 0, twoPlayerStockDraw: false
   };
 }
@@ -111,21 +163,22 @@ export function legalCards(hand: Card[], lead?: Suit): Card[] {
   return same.length ? same : hand;
 }
 
-export function cardBeats(a: Card, b: Card, lead: Suit, hokm: Suit): boolean {
-  const at = a.suit === hokm, bt = b.suit === hokm;
+export function cardBeats(a: Card, b: Card, lead: Suit, hokm?: Suit, reversedRanks = false): boolean {
+  const rankValue = (rank: Rank) => reversedRanks ? 15 - rank : rank;
+  const at = Boolean(hokm) && a.suit === hokm, bt = Boolean(hokm) && b.suit === hokm;
   if (at !== bt) return at;
   if (a.suit !== b.suit) {
     if (a.suit !== lead) return false;
     return b.suit !== lead || a.rank > b.rank;
   }
-  return a.rank > b.rank;
+  return rankValue(a.rank) > rankValue(b.rank);
 }
 
-export function trickWinner(trick: Array<{ playerId: PlayerId; card: Card }>, hokm: Suit): PlayerId {
+export function trickWinner(trick: Array<{ playerId: PlayerId; card: Card }>, hokm?: Suit, reversedRanks = false): PlayerId {
   if (!trick.length) throw new Error("Empty trick");
   const lead = trick[0].card.suit;
   let winner = trick[0];
-  for (const play of trick.slice(1)) if (cardBeats(play.card, winner.card, lead, hokm)) winner = play;
+  for (const play of trick.slice(1)) if (cardBeats(play.card, winner.card, lead, hokm, reversedRanks)) winner = play;
   return winner.playerId;
 }
 
@@ -141,11 +194,12 @@ export function buildInitialState(
   hokmPlayerId: PlayerId,
   random = Math.random,
   targetScore = 7,
-  handsCompleted = 0
+  handsCompleted = 0,
+  variantId: HokmVariantId = "standard"
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
   const count = players.length as PlayerCount;
-  const rules = createRules(count, players, targetScore);
+  const rules = createRules(count, players, targetScore, variantId);
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
 
@@ -173,7 +227,8 @@ export function buildInitialState(
     leaderId: hokmPlayerId,
     turnPlayerId: hokmPlayerId,
     handsCompleted,
-    turnUnlockAt: 0
+    turnUnlockAt: 0,
+    cutUsed: Object.fromEntries(players.map(p => [p.id, false]))
   };
 
   if (count === 2) {
@@ -187,10 +242,13 @@ export function buildInitialState(
   return base;
 }
 
-export function chooseHokm(state: HokmState, playerId: PlayerId, suit: Suit): HokmState {
+export function chooseHokm(state: HokmState, playerId: PlayerId, suit?: Suit): HokmState {
   if (state.phase !== "select_hokm" || playerId !== state.hokmPlayerId) {
     throw new Error("Cannot choose hokm now");
   }
+  const variant = getHokmVariant(state.rules.variantId);
+  if (variant.hasTrump && !suit) throw new Error("A trump suit is required for this variant");
+  if (!variant.hasTrump && suit) throw new Error("This variant has no trump suit");
   const next = structuredClone(state);
   next.hokm = suit;
 
@@ -212,6 +270,33 @@ export function chooseHokm(state: HokmState, playerId: PlayerId, suit: Suit): Ho
   if (next.twoPlayerBuild) {
     next.twoPlayerBuild.phase = "discard";
     next.twoPlayerBuild.currentPlayer = playerId;
+  }
+  return next;
+}
+
+export function startNoTrumpVariant(state: HokmState): HokmState {
+  if (state.phase !== "select_hokm") throw new Error("Cannot start this variant now");
+  const variant = getHokmVariant(state.rules.variantId);
+  if (variant.hasTrump) throw new Error("This variant requires a trump suit");
+  const next = structuredClone(state);
+  next.hokm = undefined;
+  if (next.players.length !== 2) {
+    for (const dealSize of next.rules.followUpDeals) {
+      for (const player of next.players) {
+        for (let i = 0; i < dealSize; i++) {
+          const card = next.deck.shift();
+          if (!card) throw new Error("Deck exhausted while completing the deal");
+          next.hands[player.id].push(card);
+        }
+      }
+    }
+    next.phase = "playing";
+  } else {
+    next.phase = "build_two_player_hand";
+    if (next.twoPlayerBuild) {
+      next.twoPlayerBuild.phase = "discard";
+      next.twoPlayerBuild.currentPlayer = next.hokmPlayerId;
+    }
   }
   return next;
 }
@@ -321,7 +406,8 @@ export function drawTwo(state: HokmState, playerId: PlayerId, keep: boolean): Ho
 }
 
 export function playCard(state: HokmState, playerId: PlayerId, cardId: string): HokmState {
-  if (state.phase !== "playing" || !state.hokm || state.turnPlayerId !== playerId) {
+  const variant = getHokmVariant(state.rules.variantId);
+  if (state.phase !== "playing" || (variant.hasTrump && !state.hokm) || state.turnPlayerId !== playerId) {
     throw new Error("Invalid play");
   }
   if (state.turnUnlockAt > Date.now()) {
@@ -336,11 +422,21 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
   const card = hand.find(c => c.id === cardId);
   if (!card) throw new Error("Card not in hand");
 
-  if (!legalCards(hand, next.trick[0]?.card.suit).some(c => c.id === cardId)) {
-    throw new Error("Must follow suit");
+  const lead = next.trick[0]?.card.suit;
+  const sameSuit = lead ? hand.filter(c => c.suit === lead) : [];
+  const hasLead = Boolean(lead && sameSuit.length);
+  const isCut = Boolean(variant.limitedCuts && next.hokm && lead && lead !== next.hokm && !hasLead && card.suit === next.hokm);
+  let legal = legalCards(hand, lead);
+  if (isCut && next.cutUsed[playerId]) {
+    const nonTrump = legal.filter(c => c.suit !== next.hokm);
+    if (nonTrump.length) legal = nonTrump;
+  }
+  if (!legal.some(c => c.id === cardId)) {
+    throw new Error(variant.limitedCuts && next.cutUsed[playerId] ? "شما قبلاً از تنها فرصت برش خود استفاده کرده‌اید" : "Must follow suit");
   }
 
   next.hands[playerId] = hand.filter(c => c.id !== cardId);
+  if (isCut) next.cutUsed[playerId] = true;
   next.trick.push({ playerId, card });
 
   if (next.trick.length < next.players.length) {
@@ -349,7 +445,7 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
   }
 
   const completedTrick = structuredClone(next.trick);
-  const winner = trickWinner(next.trick, next.hokm);
+  const winner = trickWinner(next.trick, next.hokm, variant.reversedRanks);
   next.lastCompletedTrick = completedTrick;
   next.tricksWon[winner]++;
   next.teamTricks[teamForPlayer(next.teams, winner).id]++;
@@ -477,7 +573,8 @@ export function startNextHand(state: HokmState): HokmState {
     hokmPlayerId,
     Math.random,
     state.rules.targetScore,
-    state.handsCompleted
+    state.handsCompleted,
+    state.rules.variantId
   );
   next.scores = structuredClone(state.scores);
   // Keep the previous hand's final trick visible during the 1-second
@@ -488,9 +585,16 @@ export function startNextHand(state: HokmState): HokmState {
 }
 
 export function isLegalMove(state: HokmState, playerId: PlayerId, cardId: string): boolean {
-  if (state.phase !== "playing" || state.turnPlayerId !== playerId || !state.hokm) return false;
+  const variant = getHokmVariant(state.rules.variantId);
+  if (state.phase !== "playing" || state.turnPlayerId !== playerId || (variant.hasTrump && !state.hokm)) return false;
   const hand = state.hands[playerId] || [];
-  return legalCards(hand, state.trick[0]?.card.suit).some(c => c.id === cardId);
+  const lead = state.trick[0]?.card.suit;
+  let legal = legalCards(hand, lead);
+  if (variant.limitedCuts && state.cutUsed[playerId] && state.hokm && lead && lead !== state.hokm && !hand.some(c => c.suit === lead)) {
+    const nonTrump = legal.filter(c => c.suit !== state.hokm);
+    if (nonTrump.length) legal = nonTrump;
+  }
+  return legal.some(c => c.id === cardId);
 }
 
 
