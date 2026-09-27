@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";\nimport Link from "next/link";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
