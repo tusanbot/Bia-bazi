@@ -231,7 +231,7 @@ export default function RoomPage() {
         {canChange && (
           <div className="room-actions variant-actions">
             <span>نوع حکم:</span>
-            {(Object.values(HOKM_VARIANTS) as typeof HOKM_VARIANTS[HokmVariantId][]).map(variant => (
+            {Object.values(HOKM_VARIANTS).map(variant => (
               <button
                 key={variant.id}
                 className={room.config.variantId === variant.id || (!room.config.variantId && variant.id === "standard") ? "mode-chip selected" : "mode-chip"}
