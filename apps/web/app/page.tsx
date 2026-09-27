@@ -197,7 +197,7 @@ export default function Home() {
 
       <section>
         <div className="section-title"><h2>بازی‌ها</h2><span>۲ بازی</span></div>
-        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={createRoom} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setSelectedGame("scala_quaranta"); setScalaMode(value); }} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
+        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={() => createRoom("hokm")} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setSelectedGame("scala_quaranta"); setScalaMode(value); }} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
       </section>
 
       {creating && !groupLaunch && <div className="mode-hint">در حال ساخت اتاق...</div>}
