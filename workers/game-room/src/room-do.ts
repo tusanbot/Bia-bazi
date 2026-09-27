@@ -17,6 +17,7 @@ export interface Env {
   GAME_ROOM: DurableObjectNamespace;
   ASSETS: Fetcher;
   TELEGRAM_BOT_TOKEN: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
   DB?: D1Database;
 }
 
@@ -810,9 +811,75 @@ export class GameRoomDurableObject {
   }
 }
 
+
+
+type BotUpdate = {
+  message?: { chat: { id: number; type: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string }; text?: string };
+  inline_query?: { id: string; from: { id: number; first_name?: string; last_name?: string; username?: string }; query: string; chat_type?: string };
+};
+
+async function telegramBotApi(token: string, method: string, body: unknown) {
+  const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/${method}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+  });
+  return response.json() as Promise<any>;
+}
+
+function botUserName(user?: { first_name?: string; last_name?: string; username?: string }) {
+  return [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "بازیکن";
+}
+
+async function createBotRoom(env: Env, roomId: string, hostId: string, hostName: string, chatId?: string) {
+  const id = env.GAME_ROOM.idFromName(roomId);
+  const response = await env.GAME_ROOM.get(id).fetch(`https://internal/api/room?room=${encodeURIComponent(roomId)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-bia-bot-token": env.TELEGRAM_BOT_TOKEN },
+    body: JSON.stringify({ type: chatId ? "create_group_room" : "create_inline_room", gameId: "hokm", playerCount: 4, chatId, hostId, hostName })
+  });
+  const json = await response.json() as { room?: { id: string }; error?: string };
+  if (!response.ok || !json.room) throw new Error(json.error || "ساخت اتاق ناموفق بود");
+  return json.room;
+}
+
+async function handleTelegramWebhook(request: Request, env: Env) {
+  const secret = env.TELEGRAM_WEBHOOK_SECRET;
+  if (secret && request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const update = await request.json() as BotUpdate;
+  const me = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getMe", {});
+  const username = me?.result?.username as string | undefined;
+  if (!username) throw new Error("Bot username unavailable");
+
+  if (update.inline_query) {
+    const q = update.inline_query;
+    const room = await createBotRoom(env, `inline-${q.from.id}-${Date.now().toString(36)}`, String(q.from.id), botUserName(q.from));
+    const link = `https://t.me/${username}?startapp=${encodeURIComponent(`room_${room.id}`)}`;
+    await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "answerInlineQuery", {
+      inline_query_id: q.id, is_personal: true, cache_time: 0,
+      results: [{ type: "article", id: room.id, title: "بازی حکم ۴ نفره", description: "ساخت اتاق حکم و ارسال لینک ورود", input_message_content: { message_text: "🃏 بازی حکم آماده است. برای ورود روی دکمه زیر بزنید." }, reply_markup: { inline_keyboard: [[{ text: "ورود به بازی", url: link }]] } }]
+    });
+    return Response.json({ ok: true });
+  }
+
+  const message = update.message;
+  if (message?.text && message.from && (message.chat.type === "group" || message.chat.type === "supergroup")) {
+    const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
+    if (command === "/hokm") {
+      const room = await createBotRoom(env, `group-${message.chat.id}-hokm4`, String(message.from.id), botUserName(message.from), String(message.chat.id));
+      const link = `https://t.me/${username}?startapp=${encodeURIComponent(`room_${room.id}`)}`;
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: message.chat.id, text: "🃏 اتاق حکم آماده است. هر بازیکن برای ورود روی دکمه زیر بزند.", reply_markup: { inline_keyboard: [[{ text: "ورود به بازی حکم", url: link }]] } });
+    }
+  }
+  return Response.json({ ok: true });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/telegram/webhook" && request.method === "POST") {
+      try { return await handleTelegramWebhook(request, env); }
+      catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Webhook error" }, { status: 500 }); }
+    }
 
     // The same Worker serves both the Mini App and the game backend.
     // All /api/room traffic is routed to the Durable Object; everything
