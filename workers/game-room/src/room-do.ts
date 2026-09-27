@@ -28,7 +28,7 @@ type ActiveRoom = {
   hostName: string;
   createdAt: number;
   updatedAt: number;
-  status: "waiting" | "playing" | "finished";
+  status: "waiting" | "playing" | "finished" | "cancelled" | "closed";
 };
 
 type PlayerStats = {
@@ -43,6 +43,14 @@ type PlayerStats = {
   currentStreak: number;
   bestStreak: number;
   updatedAt: number;
+};
+
+type ChatMessage = {
+  id: string;
+  playerId: string;
+  displayName: string;
+  text: string;
+  createdAt: number;
 };
 
 type GameResultRecord = {
@@ -70,6 +78,7 @@ type Action =
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
   | { type: "change_player_count"; playerCount: HokmPlayerCount; initData: string }
+  | { type: "set_target_score"; targetScore: 1 | 3 | 5 | 7; initData: string }
   | { type: "start"; initData: string }
   | { type: "choose_hokm"; playerId: string; suit: Suit; initData: string }
   | { type: "discard_two"; playerId: string; cardIds: string[]; initData: string }
@@ -77,6 +86,10 @@ type Action =
   | { type: "play_card"; playerId: string; cardId: string; initData: string }
   | { type: "finish_hand"; initData: string }
   | { type: "next_hand"; initData: string }
+  | { type: "request_finish"; initData: string }
+  | { type: "cancel_room"; initData: string }
+  | { type: "close_room"; initData: string }
+  | { type: "send_message"; text: string; initData: string }
   | { type: "list_rooms"; initData: string };
 
 function displayName(user: TelegramUser) {
@@ -265,6 +278,8 @@ async function verifyTelegramInitData(initData: string, botToken: string): Promi
 export class GameRoomDurableObject {
   private room?: GameRoom;
   private game?: HokmState;
+  private stopAfterOddHand = false;
+  private chatMessages: ChatMessage[] = [];
 
   constructor(private state: DurableObjectState, private env: Env) {}
 
@@ -273,6 +288,8 @@ export class GameRoomDurableObject {
     const storedRoom = await this.state.storage.get<GameRoomState>("room");
     if (storedRoom) this.room = new GameRoom(storedRoom);
     this.game = await this.state.storage.get<HokmState>("game");
+    this.stopAfterOddHand = (await this.state.storage.get<boolean>("stop_after_odd_hand")) ?? false;
+    this.chatMessages = (await this.state.storage.get<ChatMessage[]>("chat_messages")) ?? [];
     return this.room;
   }
 
@@ -280,6 +297,8 @@ export class GameRoomDurableObject {
     if (!this.room) throw new Error("Room does not exist");
     await this.state.storage.put("room", this.room.getState());
     if (this.game) await this.state.storage.put("game", this.game);
+    await this.state.storage.put("stop_after_odd_hand", this.stopAfterOddHand);
+    await this.state.storage.put("chat_messages", this.chatMessages.slice(-100));
   }
 
   private async persistUser(user: TelegramUser) {
@@ -385,7 +404,12 @@ export class GameRoomDurableObject {
       }
     }
 
-    return Response.json({ room: this.room.getState(), game });
+    return Response.json({
+      room: this.room.getState(),
+      game,
+      stopAfterOddHand: this.stopAfterOddHand,
+      chatMessages: this.chatMessages
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -514,7 +538,9 @@ export class GameRoomDurableObject {
             id: userId,
             displayName: displayName(telegramUser),
             username: telegramUser.username
-          }
+          },
+          Date.now(),
+          7
         );
 
         await this.persistRoom();
@@ -569,11 +595,29 @@ export class GameRoomDurableObject {
           this.room.setPlayerCount(action.playerCount);
           break;
 
+        case "set_target_score":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can change the match length");
+          if (this.room.getState().status !== "waiting") throw new Error("Match length can only be changed before the game starts");
+          this.room.getState().config.targetScore = action.targetScore;
+          {
+            const roomState = this.room.getState();
+            roomState.config.targetScore = action.targetScore;
+            this.room = new GameRoom(roomState);
+          }
+          break;
+
         case "start": {
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can start the game");
           this.room.start();
           const players = this.room.getState().players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
-          this.game = buildInitialState(players, userId, userId);
+          this.game = buildInitialState(
+            players,
+            userId,
+            userId,
+            Math.random,
+            this.room.getState().config.targetScore ?? 7,
+            0
+          );
           this.room.markPlaying();
           break;
         }
@@ -602,6 +646,11 @@ export class GameRoomDurableObject {
           this.game = playCard(this.game, userId, action.cardId);
           if (this.game.phase === "hand_finished") {
             this.game = finishHand(this.game);
+
+            if (this.stopAfterOddHand && this.game.handsCompleted % 2 === 1) {
+              this.game.phase = "game_finished";
+            }
+
             if (this.game.phase === "game_finished") {
               this.room.finish();
               await this.persistRoom();
@@ -618,6 +667,45 @@ export class GameRoomDurableObject {
           if (!this.game.players.some(player => player.id === userId)) throw new Error("You are not a player");
           this.game = startNextHand(this.game);
           break;
+
+        case "request_finish":
+          this.requireGame();
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can finish the game");
+          if (this.room.getState().status !== "playing") throw new Error("Game is not playing");
+          this.stopAfterOddHand = true;
+          if (this.game.phase === "hand_finished" && this.game.handsCompleted % 2 === 1) {
+            this.game.phase = "game_finished";
+            this.room.finish();
+            await this.persistRoom();
+            await this.persistGameResult(this.game);
+          }
+          break;
+
+        case "cancel_room":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can cancel the room");
+          this.room.cancel();
+          break;
+
+        case "close_room":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can close the room");
+          this.room.close();
+          break;
+
+        case "send_message": {
+          if (!this.room.getState().players.some(player => player.id === userId)) throw new Error("You are not a player");
+          const text = action.text.trim();
+          if (!text) throw new Error("Message cannot be empty");
+          if (text.length > 300) throw new Error("Message is too long");
+          this.chatMessages.push({
+            id: crypto.randomUUID(),
+            playerId: userId,
+            displayName: displayName(telegramUser),
+            text,
+            createdAt: Date.now()
+          });
+          this.chatMessages = this.chatMessages.slice(-100);
+          break;
+        }
 
         case "state":
         case "create":
