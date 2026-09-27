@@ -86,15 +86,15 @@ export function createRules(count: PlayerCount, players: GamePlayer[], targetSco
     : players.map(p => ({ id: "player-" + p.id, playerIds: [p.id] }));
 
   if (count === 2) return {
-    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore: 7, firstDeal: 5,
+    playerCount: 2, cardsPerPlayer: 13, targetTricks: 7, targetScore, firstDeal: 5,
     followUpDeals: [], teams, removedCards: 0, twoPlayerStockDraw: true
   };
   if (count === 3) return {
-    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore: 7, firstDeal: 5,
+    playerCount: 3, cardsPerPlayer: 17, targetTricks: 7, targetScore, firstDeal: 5,
     followUpDeals: [4,4,4], teams, removedCards: 1, twoPlayerStockDraw: false
   };
   return {
-    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore: 7, firstDeal: 5,
+    playerCount: 4, cardsPerPlayer: 13, targetTricks: 7, targetScore, firstDeal: 5,
     followUpDeals: [4,4], teams, removedCards: 0, twoPlayerStockDraw: false
   };
 }
