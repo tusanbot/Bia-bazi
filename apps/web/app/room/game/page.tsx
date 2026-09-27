@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";\nimport Link from "next/link";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
@@ -238,7 +238,7 @@ export default function HokmGamePage() {
 
   return (
     <main className="shell hokm-game">
-      <div className="game-navigation">
+      <div className="game-navigation">\n        <Link className="secondary" href={`/games/${game.rules.variantId === "standard" || game.rules.variantId === "saras" || game.rules.variantId === "naras" || game.rules.variantId === "tak_bresh" ? "hokm" : "hokm"}/learn`}>آموزش</Link>
         <button className="secondary" disabled={busy} onClick={() => router.replace(`/room?room=${encodeURIComponent(roomId)}&from=game`)}>بازگشت</button>
         {isHost && data.room.status === "playing" && (
           <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
