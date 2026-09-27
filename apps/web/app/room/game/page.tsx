@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../../lib/telegram";
+import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
 type Card = { id: string; suit: Suit; rank: number };
 type Player = { id: string; seat: number; displayName: string };
 type Game = {
-  rules: { playerCount: number; cardsPerPlayer: number; targetScore?: 1 | 3 | 5 | 7 };
+  rules: { playerCount: number; cardsPerPlayer: number; targetScore?: 1 | 3 | 5 | 7; variantId: HokmVariantId };
   players: Player[];
   hokmPlayerId: string;
   hokm?: Suit;
@@ -17,6 +18,7 @@ type Game = {
   trick: Array<{ playerId: string; card: Card }>;
   lastCompletedTrick: Array<{ playerId: string; card: Card }>;
   turnUnlockAt: number;
+  cutUsed: Record<string, boolean>;
   handResultApplied: boolean;
   handWinnerIds: string[];
   handPoints: Record<string, number>;
@@ -67,6 +69,7 @@ export default function HokmGamePage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [variantInfoOpen, setVariantInfoOpen] = useState(false);
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
   const [sortMode, setSortMode] = useState<"original" | "value" | "suit" | "value_suit">("original");
   const [message, setMessage] = useState("");
@@ -194,6 +197,7 @@ export default function HokmGamePage() {
   }
 
   const game = currentGame;
+  const variant = HOKM_VARIANTS[game.rules.variantId] ?? HOKM_VARIANTS.standard;
   const nameOf = (id: string) => game.players.find(p => p.id === id)?.displayName ?? "بازیکن";
   const shortName = (name: string, max = 14) => name.length > max ? name.slice(0, max) + "…" : name;
   const isHost = data?.room.hostId === playerId;
@@ -246,7 +250,10 @@ export default function HokmGamePage() {
         <div>
           <div className="eyebrow">HOKM · {game.rules.playerCount} PLAYER · {game.rules.targetScore ?? 7} دور</div>
           <h1>حکم</h1>
-          <p className="current-trump">{game.hokm ? `حکم: ${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : "در انتظار انتخاب حکم"}</p>
+          <button className="current-trump" onClick={() => setVariantInfoOpen(true)} aria-label="نمایش توضیحات نوع حکم">
+            {game.hokm ? `حکم: ${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : variant.hasTrump ? "در انتظار انتخاب حکم" : "بدون خال حکم"}
+            <span className="trump-info-icon">ⓘ</span>
+          </button>
         </div>
       </header>
 
@@ -451,6 +458,35 @@ export default function HokmGamePage() {
           </div>
         )}
       </section>
+
+
+      {variantInfoOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setVariantInfoOpen(false)}>
+          <section className="info-modal" role="dialog" aria-modal="true" aria-labelledby="hokm-variant-title" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setVariantInfoOpen(false)} aria-label="بستن">×</button>
+            <div className="modal-kicker">نوع بازی</div>
+            <h2 id="hokm-variant-title">{variant.title}</h2>
+            <div className="modal-trump">
+              <span>{variant.hasTrump ? "خال حکم" : "خال حکم"}</span>
+              <strong>{game.hokm ? `${suitMeta[game.hokm].symbol} ${suitMeta[game.hokm].name}` : "ندارد"}</strong>
+            </div>
+            <p>{variant.fullDescription}</p>
+            {variant.limitedCuts && (
+              <div className="modal-note">
+                <strong>وضعیت تک‌برش:</strong> هر بازیکن در این دست فقط یک بار می‌تواند با حکم ببُرد.
+                <div className="cut-status-list">
+                  {game.players.map(player => (
+                    <span key={player.id} className={game.cutUsed[player.id] ? "cut-used" : "cut-available"}>
+                      {shortName(player.displayName, 12)}: {game.cutUsed[player.id] ? "برش مصرف شده" : "برش باقی است"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button className="primary wide" onClick={() => setVariantInfoOpen(false)}>متوجه شدم</button>
+          </section>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
       {!me && <p className="error">شناسه بازیکن فعلی هنوز به تلگرام متصل نشده است.</p>}
