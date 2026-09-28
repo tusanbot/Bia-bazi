@@ -122,7 +122,8 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!fromGame && (data?.room.status === "playing" || data?.room.status === "finished")) {
-      const target = data.room.config.gameId === "scala_quaranta" ? "/room/scala" : "/room/game";
+      const miniGames = ["haft_khabis","chahar_barg","rock_paper_scissors","shelem","tic_tac_toe","battleship","truth_or_dare","spy","backgammon"];
+      const target = data.room.config.gameId === "scala_quaranta" ? "/room/scala" : miniGames.includes(data.room.config.gameId) ? "/room/mini" : "/room/game";
       router.replace(target + "?room=" + encodeURIComponent(roomId));
     }
   }, [data?.room.status, data?.room.config.gameId, roomId, router, fromGame]);
