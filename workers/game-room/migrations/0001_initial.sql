@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS game_results (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   room_id TEXT NOT NULL REFERENCES game_rooms(id),
   telegram_id INTEGER NOT NULL,
+  game_id TEXT,
   placement INTEGER,
   score_delta INTEGER NOT NULL DEFAULT 0,
   rating_delta INTEGER NOT NULL DEFAULT 0,
@@ -58,3 +59,4 @@ CREATE TABLE IF NOT EXISTS game_results (
 CREATE INDEX IF NOT EXISTS idx_player_stats_rating ON player_stats(rating DESC);
 CREATE INDEX IF NOT EXISTS idx_game_results_player ON game_results(telegram_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_game_results_room ON game_results(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_results_game ON game_results(game_id, created_at DESC);
