@@ -1143,8 +1143,8 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     }
   }
 
-  const message = update.message;
-  if (message?.text && message.from && (message.chat.type === "group" || message.chat.type === "supergroup")) {
+  const groupMessage = update.message;
+  if (groupMessage?.text && groupMessage.from && (groupMessage.chat.type === "group" || groupMessage.chat.type === "supergroup")) {
     const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
     if (command === "/hokm") {
       const room = await createBotRoom(env, `group-${message.chat.id}-hokm4`, String(message.from.id), botUserName(message.from), String(message.chat.id));
