@@ -187,9 +187,13 @@ export default function Home() {
           <div className="active-rooms">
             {activeRooms.map(room => (
               <div className="active-room" key={room.id}>
-                <div className="active-room-icon">{room.gameId === "scala_quaranta" ? "🂡" : "🃏"}</div>
+                <div className="active-room-icon">{room.gameId === "scala_quaranta" ? "🂡" : room.gameId === "tic_tac_toe" ? "⭕" : room.gameId === "battleship" ? "🚢" : room.gameId === "spy" ? "🕵️" : "🎮"}</div>
                 <div className="active-room-copy">
-                  <strong>{room.gameId === "scala_quaranta" ? "اسکالا کوآرانتا" : "حکم"} {room.playerCount} نفره</strong>
+                  <strong>{({
+                    hokm:"حکم", scala_quaranta:"اسکالا کوآرانتا", haft_khabis:"هفت خبیث", chahar_barg:"۴ برگ",
+                    rock_paper_scissors:"سنگ کاغذ قیچی", shelem:"شلم", tic_tac_toe:"دوز", battleship:"کشتی جنگی",
+                    truth_or_dare:"جرأت حقیقت", spy:"جاسوس", backgammon:"نرد"
+                  } as Record<string,string>)[room.gameId] || room.gameId} {room.playerCount} نفره</strong>
                   <span>{room.currentPlayers} / {room.playerCount} بازیکن · میزبان {room.hostName}</span>
                 </div>
                 <button className="secondary" onClick={() => router.push(`/room?room=${encodeURIComponent(room.id)}`)}>ورود</button>
