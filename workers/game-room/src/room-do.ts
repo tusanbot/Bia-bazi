@@ -552,8 +552,8 @@ export class GameRoomDurableObject {
     if (this.miniGame) {
       const game = structuredClone(this.miniGame);
       if (game.gameId === "spy") {
-        if (game.spyId !== viewerId) delete game.spyId;
-        delete game.location;
+        if (game.phase !== "finished" && game.spyId !== viewerId) delete game.spyId;
+        if (game.phase !== "finished" && game.spyId !== viewerId) delete game.location;
       }
       if (game.gameId === "battleship") {
         const boards = game.boards as Record<string, unknown[]>;
