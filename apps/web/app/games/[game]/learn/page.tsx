@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useParams } from "next/navigation";
 
 type Section = { title: string; text: string; bullets?: string[] };
 
@@ -100,9 +97,9 @@ export function generateStaticParams() {
   return [{ game: "hokm" }, { game: "scala-quaranta" }];
 }
 
-export default function LearnGamePage() {
-  const params = useParams<{ game: string }>();
-  const game = lessons[params.game] ?? lessons.hokm;
+export default async function LearnGamePage({ params }: { params: Promise<{ game: string }> }) {
+  const { game: gameId } = await params;
+  const game = lessons[gameId] ?? lessons.hokm;
 
   return (
     <main className="shell learn-page">
@@ -140,8 +137,8 @@ export default function LearnGamePage() {
       </div>
 
       <div className="learn-footer">
-        <Link className="primary wide" href={params.game === "hokm" ? "/" : "/games"}>
-          {params.game === "hokm" ? "بریم بازی حکم" : "بازگشت به بازی‌ها"}
+        <Link className="primary wide" href={gameId === "hokm" ? "/" : "/games"}>
+          {gameId === "hokm" ? "بریم بازی حکم" : "بازگشت به بازی‌ها"}
         </Link>
       </div>
     </main>
