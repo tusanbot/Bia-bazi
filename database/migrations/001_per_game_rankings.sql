@@ -1,0 +1,59 @@
+-- Bia-bazi D1 migration: per-game ratings and rankings
+-- Run once against the existing production D1 database.
+
+CREATE TABLE IF NOT EXISTS player_game_stats (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_id TEXT NOT NULL,
+  rating INTEGER NOT NULL DEFAULT 1000,
+  games_played INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0,
+  draws INTEGER NOT NULL DEFAULT 0,
+  current_streak INTEGER NOT NULL DEFAULT 0,
+  best_streak INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, game_id)
+);
+
+ALTER TABLE game_results ADD COLUMN game_id TEXT;
+
+UPDATE game_results
+SET game_id = (
+  SELECT game_rooms.game_type
+  FROM game_rooms
+  WHERE game_rooms.id = game_results.room_id
+)
+WHERE game_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating
+  ON player_game_stats(game_id, rating DESC);
+
+CREATE INDEX IF NOT EXISTS idx_game_results_game
+  ON game_results(game_id, created_at DESC);
+
+-- Rebuild per-game stats from historical final results.
+INSERT INTO player_game_stats (
+  user_id, game_id, rating, games_played, wins, losses, draws,
+  current_streak, best_streak
+)
+SELECT
+  u.id,
+  gr.game_id,
+  1000 + SUM(gr.rating_delta),
+  COUNT(*),
+  SUM(CASE WHEN gr.placement = 1 THEN 1 ELSE 0 END),
+  SUM(CASE WHEN gr.placement > 1 THEN 1 ELSE 0 END),
+  SUM(CASE WHEN gr.placement IS NULL THEN 1 ELSE 0 END),
+  0,
+  0
+FROM game_results gr
+JOIN users u ON u.telegram_id = gr.telegram_id
+WHERE gr.game_id IS NOT NULL
+GROUP BY u.id, gr.game_id
+ON CONFLICT(user_id, game_id) DO UPDATE SET
+  rating = excluded.rating,
+  games_played = excluded.games_played,
+  wins = excluded.wins,
+  losses = excluded.losses,
+  draws = excluded.draws,
+  updated_at = CURRENT_TIMESTAMP;
