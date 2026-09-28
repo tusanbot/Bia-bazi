@@ -262,3 +262,9 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .game-seat strong { max-width:74px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:8px; }
 .game-seat small { color:#a7eee2; font-size:7px; min-height:10px; }
 .game-seat-number { position:absolute; top:4px; right:6px; color:var(--muted); font-size:7px; }
+
+.game-table-preview.table-2 .table-seat:nth-of-type(2) { left:50%; top:13%; }
+.game-table-preview.table-2 .table-seat:nth-of-type(3) { left:50%; top:87%; }
+.game-table-preview.table-3 .table-seat:nth-of-type(2) { left:50%; top:13%; }
+.game-table-preview.table-3 .table-seat:nth-of-type(3) { left:84%; top:78%; }
+.game-table-preview.table-3 .table-seat:nth-of-type(4) { left:16%; top:78%; }
