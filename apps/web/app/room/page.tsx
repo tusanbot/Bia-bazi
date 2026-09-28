@@ -161,6 +161,7 @@ export default function RoomPage() {
   const targetScores = [1, 3, 5, 7] as const;
   const selectedVariant = room.config.gameId === "hokm" ? HOKM_VARIANTS[room.config.variantId ?? "standard"] : null;
   const isScala = room.config.gameId === "scala_quaranta";
+  const isHokm = room.config.gameId === "hokm";
   const playerModes = isScala ? [2, 3, 4, 5, 6] : modes;
   const seats = Array.from({ length: room.config.playerCount }, (_, i) => i);
   const teamForSeat = (seat: number) => {
@@ -177,8 +178,8 @@ export default function RoomPage() {
         <div className="brand-mark">🃏</div>
         <div>
           <div className="eyebrow">ROOM</div>
-          <h1>{isScala ? "اتاق اسکالا کوآرانتا" : "اتاق حکم"}</h1>
-          <p>{room.config.playerCount} نفره · {isScala ? "۱۰۱ امتیازی" : `${room.config.targetScore ?? 7} دور · ${selectedVariant?.title ?? "استاندارد"}`} · کد اتاق {room.id.slice(-6)}</p>
+          <h1>{isScala ? "اتاق اسکالا کوآرانتا" : isHokm ? "اتاق حکم" : `اتاق ${room.config.gameId}`}</h1>
+          <p>{room.config.playerCount} نفره · {isScala ? "۱۰۱ امتیازی" : isHokm ? `${room.config.targetScore ?? 7} دور · ${selectedVariant?.title ?? "استاندارد"}` : "بازی گروهی"} · کد اتاق {room.id.slice(-6)}</p>
         </div>
       </header>
 
@@ -246,7 +247,7 @@ export default function RoomPage() {
           </button>
         )}
 
-        {!isScala && canChange && (
+        {isHokm && canChange && (
           <div className="room-actions">
             <span>تعداد دورهای بازی:</span>
             {targetScores.map(score => (
