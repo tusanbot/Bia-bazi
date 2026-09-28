@@ -205,7 +205,7 @@ export default function RoomPage() {
           </div>
         )}
 
-        <div className="game-table-preview">
+        <div className={`game-table-preview table-${room.config.playerCount}`}>
           <div className="table-center">
             <strong>{isScala ? "SKALA" : "حکم"}</strong>
             <small>{room.config.playerCount} نفره</small>
