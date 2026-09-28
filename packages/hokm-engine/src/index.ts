@@ -217,11 +217,12 @@ export function buildInitialState(
   variantId: HokmVariantId = "standard"
 ): HokmState {
   if (![2,3,4].includes(players.length)) throw new Error("Hokm supports 2, 3 or 4 players");
-  const count = players.length as PlayerCount;
+  const orderedPlayers = [...players].sort((a, b) => a.seat - b.seat);
+  const count = orderedPlayers.length as PlayerCount;
   if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Target score must be 1, 3, 5 or 7");
   // Build the rules with the default score first so older declaration/type consumers
   // cannot reject the runtime numeric value during TypeScript checking.
-  const rules = createRules(count, players, 7, variantId);
+  const rules = createRules(count, orderedPlayers, 7, variantId);
   rules.targetScore = targetScore as 1 | 3 | 5 | 7;
   let deck = shuffle(createDeck(), random);
   const removedCards: Card[] = [];
@@ -231,33 +232,33 @@ export function buildInitialState(
     removedCards.push(deck.splice(i, 1)[0]);
   }
 
-  const hands: Record<PlayerId, Card[]> = Object.fromEntries(players.map(p => [p.id, []]));
+  const hands: Record<PlayerId, Card[]> = Object.fromEntries(orderedPlayers.map(p => [p.id, []]));
   for (let n = 0; n < rules.firstDeal; n++) {
-    for (const p of players) hands[p.id].push(deck.shift()!);
+    for (const p of orderedPlayers) hands[p.id].push(deck.shift()!);
   }
 
   const base: HokmState = {
-    rules, players, dealerId, hokmPlayerId, phase: "select_hokm", hands,
+    rules, players: orderedPlayers, dealerId, hokmPlayerId, phase: "select_hokm", hands,
     trick: [],
     lastCompletedTrick: [],
     handResultApplied: false,
     handWinnerIds: [],
     handPoints: {},
-    tricksWon: Object.fromEntries(players.map(p => [p.id, 0])),
+    tricksWon: Object.fromEntries(orderedPlayers.map(p => [p.id, 0])),
     teamTricks: Object.fromEntries(rules.teams.map(t => [t.id, 0])),
-    scores: Object.fromEntries(players.map(p => [p.id, 0])),
+    scores: Object.fromEntries(orderedPlayers.map(p => [p.id, 0])),
     teams: rules.teams, deck, removedCards,
     leaderId: hokmPlayerId,
     turnPlayerId: hokmPlayerId,
     handsCompleted,
     turnUnlockAt: 0,
-    cutUsed: Object.fromEntries(players.map(p => [p.id, false]))
+    cutUsed: Object.fromEntries(orderedPlayers.map(p => [p.id, false]))
   };
 
   if (count === 2) {
     base.twoPlayerBuild = {
       stock: [], discarded: [], currentPlayer: hokmPlayerId,
-      kept: Object.fromEntries(players.map(p => [p.id, []])),
+      kept: Object.fromEntries(orderedPlayers.map(p => [p.id, []])),
       drawOptions: [],
       phase: "discard"
     };
