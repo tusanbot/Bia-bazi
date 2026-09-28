@@ -17,6 +17,8 @@ export interface GameRoomConfig {
   targetScore?: 1 | 3 | 5 | 7;
   /** Game-specific variant persisted with the room. */
   variantId?: string;
+  autoPlayEnabled?: boolean;
+  autoPlayDelaySeconds?: number;
 }
 
 export interface GameRoomState {
@@ -71,24 +73,50 @@ export class GameRoom {
       throw new Error("Room is full");
     }
 
-    const seat = this.state.players.length;
+    const occupied = new Set(this.state.players.map(p => p.seat));
+    const seat = Array.from({ length: this.state.config.playerCount }, (_, i) => i).find(i => !occupied.has(i));
+    if (seat === undefined) throw new Error("No empty seat is available");
     this.state.players.push({ ...player, seat, joinedAt: now });
     return this.getState();
   }
 
-  leave(playerId: string): GameRoomState {
-    if (this.state.status !== "waiting") throw new Error("Players cannot leave after the game starts");
+  removePlayer(playerId: string): GameRoomState {
+    if (this.state.status !== "waiting") throw new Error("Players can only be removed before the game starts");
 
     const index = this.state.players.findIndex(p => p.id === playerId);
     if (index < 0) return this.getState();
 
     this.state.players.splice(index, 1);
-    this.state.players = this.state.players.map((p, seat) => ({ ...p, seat }));
 
     if (playerId === this.state.hostId && this.state.players.length > 0) {
       this.state.hostId = this.state.players[0].id;
     }
 
+    return this.getState();
+  }
+
+  leave(playerId: string): GameRoomState {
+    return this.removePlayer(playerId);
+  }
+
+  setPlayerSeat(playerId: string, seat: number): GameRoomState {
+    if (this.state.status !== "waiting") throw new Error("Seats can only be changed before the game starts");
+    if (!Number.isInteger(seat) || seat < 0 || seat >= this.state.config.playerCount) throw new Error("Invalid seat");
+    const player = this.state.players.find(p => p.id === playerId);
+    if (!player) throw new Error("Player is not in the room");
+    const occupant = this.state.players.find(p => p.seat === seat && p.id !== playerId);
+    if (occupant) {
+      occupant.seat = player.seat;
+    }
+    player.seat = seat;
+    return this.getState();
+  }
+
+  setAutoPlay(enabled: boolean, delaySeconds: number): GameRoomState {
+    if (this.state.status !== "waiting") throw new Error("Auto play settings can only be changed before the game starts");
+    if (delaySeconds < 5 || delaySeconds > 60) throw new Error("Auto play delay must be between 5 and 60 seconds");
+    this.state.config.autoPlayEnabled = enabled;
+    this.state.config.autoPlayDelaySeconds = delaySeconds;
     return this.getState();
   }
 
