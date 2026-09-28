@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { initTelegram, telegramUser } from "../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
@@ -217,7 +217,7 @@ export default function RoomPage() {
               <button
                 key={seat}
                 className={`table-seat ${teamForSeat(seat)} ${player ? "occupied" : "empty"} ${mine ? "mine" : ""}`}
-                style={{ "--seat-index": seat } as React.CSSProperties}
+                style={{ "--seat-index": seat } as CSSProperties}
                 disabled={!isJoined || room.status !== "waiting" || busy || (!player && false)}
                 onClick={() => act({ type: "set_seat", playerId, seat })}
                 title={player ? (mine ? "جای شما" : `صندلی بازیکن: ${player.displayName}`) : "انتخاب این صندلی"}
