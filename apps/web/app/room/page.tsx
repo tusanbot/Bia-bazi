@@ -162,6 +162,7 @@ export default function RoomPage() {
   const selectedVariant = room.config.gameId === "hokm" ? HOKM_VARIANTS[room.config.variantId ?? "standard"] : null;
   const isScala = room.config.gameId === "scala_quaranta";
   const isHokm = room.config.gameId === "hokm";
+  const roomGameNames: Record<string,string> = { hokm:"حکم", scala_quaranta:"SKALA", haft_khabis:"هفت خبیث", chahar_barg:"۴ برگ", rock_paper_scissors:"سنگ کاغذ قیچی", shelem:"شلم", tic_tac_toe:"دوز", battleship:"کشتی جنگی", truth_or_dare:"جرأت حقیقت", spy:"جاسوس", backgammon:"نرد" };
   const playerModes = isScala ? [2, 3, 4, 5, 6] : modes;
   const seats = Array.from({ length: room.config.playerCount }, (_, i) => i);
   const teamForSeat = (seat: number) => {
@@ -209,7 +210,7 @@ export default function RoomPage() {
 
         <div className={`game-table-preview table-${room.config.playerCount}`}>
           <div className="table-center">
-            <strong>{isScala ? "SKALA" : "حکم"}</strong>
+            <strong>{roomGameNames[room.config.gameId] || room.config.gameId}</strong>
             <small>{room.config.playerCount} نفره</small>
           </div>
           {seats.map(seat => {
