@@ -21,6 +21,7 @@ export default function GamesPage() {
       </div>
       <Link className="play" href="/?game=scala_quaranta">انتخاب</Link>
     </section>
+    <section className="game-card"><div className="game-icon">🎯</div><div className="game-copy"><h3>بازی‌های بیشتر</h3><p>هفت خبیث، ۴ برگ، سنگ کاغذ قیچی، شلم، دوز، کشتی جنگی، جرأت حقیقت، جاسوس و نرد</p><small>۹ بازی جدید</small></div><Link className="play" href="/games/mini">مشاهده</Link></section>
     <nav className="bottom-nav"><Link href="/">خانه</Link><Link className="active" href="/games">بازی‌ها</Link><Link href="/leaderboard">رتبه‌بندی</Link><Link href="/profile">پروفایل</Link></nav>
   </main>;
 }
