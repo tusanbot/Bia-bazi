@@ -31,6 +31,10 @@ export default function Home() {
     const gameParam = new URLSearchParams(window.location.search).get("game");
     if (gameParam === "scala_quaranta") setSelectedGame("scala_quaranta");
     const startParam = telegramStartParam();
+    if (startParam === "games") {
+      router.replace("/games");
+      return;
+    }
     const chatInstance = telegramChatInstance();
     const chatType = telegramChatType();
 
