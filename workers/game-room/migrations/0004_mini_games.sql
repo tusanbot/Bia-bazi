@@ -1,4 +1,5 @@
 INSERT OR IGNORE INTO game_catalog (id, name, description, min_players, max_players, enabled) VALUES
+('scala_quaranta','اسکالا کوآرانتا','رامی چندنفره با افتتاح ۴۰ امتیازی',2,6,1),
 ('haft_khabis','هفت خبیث','بازی کارتی سریع با کارت‌های ویژه',2,6,1),
 ('chahar_barg','۴ برگ','کارت‌بازی ایرانی با جمع‌کردن کارت‌های هم‌رتبه',2,4,1),
 ('rock_paper_scissors','سنگ کاغذ قیچی','مسابقه هم‌زمان بهترین از ۵ دور',2,6,1),
