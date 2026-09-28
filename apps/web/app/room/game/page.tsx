@@ -44,6 +44,15 @@ type Payload = {
   game: Game | null;
   stopAfterOddHand?: boolean;
   chatMessages?: Array<{ id: string; playerId: string; displayName: string; text: string; createdAt: number }>;
+  hokmHandHistory?: Array<{
+    hand: number;
+    hokmPlayerId: string;
+    hokm?: Suit;
+    winnerIds: string[];
+    points: Record<string, number>;
+    tricks: Record<string, number>;
+    scores: Record<string, number>;
+  }>;
   error?: string;
 };
 
@@ -218,8 +227,34 @@ export default function HokmGamePage() {
       const ranking = [...currentGame.players].sort(
         (a, b) => (currentGame.scores[b.id] ?? 0) - (currentGame.scores[a.id] ?? 0)
       );
-      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0}`).join("\n");
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(linkJson.url)}&text=${encodeURIComponent(`نتیجه بازی حکم\n${summary}`) }`;
+      const suitNames: Record<Suit, string> = { spades: "♠️ پیک", hearts: "♥️ دل", diamonds: "♦️ خشت", clubs: "♣️ گشنیز" };
+      const variantTitle = variant.title;
+      const history = data.hokmHandHistory ?? [];
+      const handLines = history.map(hand => {
+        const winnerNames = hand.winnerIds.map(id => nameOf(id)).join(" و ");
+        const points = currentGame.players.map(p => `${nameOf(p.id)}: ${hand.points[p.id] ?? 0}`).join(" | ");
+        const tricks = currentGame.players.map(p => `${nameOf(p.id)}: ${hand.tricks[p.id] ?? 0}`).join(" | ");
+        return `دست ${hand.hand}: ${hand.hokm ? suitNames[hand.hokm] : "بدون حکم"} · برنده: ${winnerNames} · امتیاز: ${points} · دست‌ها: ${tricks}`;
+      });
+      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0} امتیاز · ${currentGame.tricksWon[p.id] ?? 0} دست`).join("\n");
+      const shareText = [
+        "🏆 نتیجه نهایی «بیا بازی»",
+        "━━━━━━━━━━━━━━",
+        "🃏 بازی: حکم",
+        `🎯 نوع: ${variantTitle}`,
+        `👥 بازیکنان: ${currentGame.players.length} نفره`,
+        `📊 هدف: ${currentGame.rules.targetScore ?? 7} امتیاز`,
+        "",
+        "📋 جدول نهایی",
+        summary,
+        "",
+        "📝 نتیجه دست‌ها",
+        ...(handLines.length ? handLines : ["جزئیات دست‌ها ثبت نشده است."]),
+        "",
+        "━━━━━━━━━━━━━━",
+        "🎮 بیا بازی"
+      ].join("\n");
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(linkJson.url)}&text=${encodeURIComponent(shareText)}`;
       if (window.Telegram?.WebApp?.openTelegramLink) {
         window.Telegram.WebApp.openTelegramLink(shareUrl);
       } else {
