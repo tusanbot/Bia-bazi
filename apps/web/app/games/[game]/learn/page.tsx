@@ -96,7 +96,7 @@ const lessons: Record<string, { title: string; subtitle: string; icon: string; s
   }
 };
 
-export default function LearnGamePage() {
+export function generateStaticParams() {\n  return [{ game: "hokm" }, { game: "scala-quaranta" }];\n}\n\nexport default function LearnGamePage() {
   const params = useParams<{ game: string }>();
   const game = lessons[params.game] ?? lessons.hokm;
 
