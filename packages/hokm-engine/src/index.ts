@@ -481,7 +481,11 @@ export function playCard(state: HokmState, playerId: PlayerId, cardId: string): 
   if (next.players.length === 2 || next.players.length === 4) {
     // In 2-player and 4-player Hokm, the first side/player to reach 7 tricks
     // wins the hand immediately.
-    if (Object.values(next.tricksWon).some(n => n >= 7) || total === 13) {
+    if (next.players.length === 4) {
+      if (Object.values(next.teamTricks).some(n => n >= 7) || total === 13) {
+        next.phase = "hand_finished";
+      }
+    } else if (Object.values(next.tricksWon).some(n => n >= 7) || total === 13) {
       next.phase = "hand_finished";
     }
   } else if (next.players.length === 3) {
