@@ -266,7 +266,29 @@ export default function RoomPage() {
         )}
 
         {isJoined && room.status === "waiting" && !isHost && (
-          <button className="secondary wide" disabled={busy} onClick={() => act({ type: "leave", playerId })}>
+          <button
+            className="secondary wide"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ type: "leave", playerId, initData: window.Telegram?.WebApp?.initData ?? "" })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || "خروج از اتاق ناموفق بود");
+                window.localStorage.removeItem("bia-bazi:last-room");
+                router.replace("/");
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "خروج از اتاق ناموفق بود");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
             خروج از اتاق
           </button>
         )}
