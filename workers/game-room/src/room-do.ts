@@ -1135,7 +1135,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     if (command === "/help") {
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: "راهنمای بیا بازی\n\n• بازی‌ها داخل Mini App اجرا می‌شوند.\n• نتیجه هر بازی ثبت می‌شود.\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\n• برای مشاهده آمار خودتان، /profile را بزنید.\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.",
+        text: "راهنمای بیا بازی\n\n• بازی‌ها داخل Mini App اجرا می‌شوند.\n• نتیجه هر بازی ثبت می‌شود.\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\n• برای مشاهده آمار خودتان، /profile را بزنید.\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.\n• در گروه هم می‌توانید /rank، /rank hokm یا /rank scala را بزنید.",
         disable_web_page_preview: true
       });
       return Response.json({ ok: true });
@@ -1221,7 +1221,7 @@ export default {
         { command: "start", description: "باز کردن بیا بازی" },
         { command: "hokm", description: "ساخت اتاق بازی حکم در گروه" },
         { command: "profile", description: "نمایش پروفایل و آمار بازی" },
-        { command: "rank", description: "نمایش رتبه‌بندی بازیکنان" },
+        { command: "rank", description: "نمایش رتبه‌بندی کلی و بازی‌ها" },
         { command: "help", description: "راهنمای استفاده از بیا بازی" }
       ];
       const [webhook, commandResult] = await Promise.all([
