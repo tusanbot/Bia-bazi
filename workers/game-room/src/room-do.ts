@@ -735,6 +735,7 @@ export class GameRoomDurableObject {
         }
 
         await this.persistRoom();
+      await this.scheduleAutoPlay();
       await this.save();
         await this.syncRegistry();
         return Response.json({ room: this.room.getState(), game: null });
