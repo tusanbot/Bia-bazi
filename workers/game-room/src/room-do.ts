@@ -389,7 +389,7 @@ export class GameRoomDurableObject {
         "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
       ).bind(ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
       await this.env.DB.prepare(
-        "INSERT INTO player_game_stats (user_id, game_id, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
+        "INSERT INTO player_game_stats (user_id, game_type, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_type) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
       ).bind(user.id, gameId, 1000 + ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0).run();
     }
   }
@@ -1007,7 +1007,7 @@ export class GameRoomDurableObject {
         "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
       ).bind(ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
       await this.env.DB.prepare(
-        "INSERT INTO player_game_stats (user_id, game_id, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
+        "INSERT INTO player_game_stats (user_id, game_type, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_type) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
       ).bind(user.id, gameId, 1000 + ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0).run();
     }
   }
@@ -1166,7 +1166,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const gameId = requestedGame === "hokm" || requestedGame === "حکم" ? "hokm" : requestedGame === "scala_quaranta" || requestedGame === "scala" || requestedGame === "اسکالا" ? "scala_quaranta" : null;
       const title = gameId === "hokm" ? "🃏 رتبه‌بندی حکم" : gameId === "scala_quaranta" ? "🂡 رتبه‌بندی اسکالا کوآرانتا" : "🏆 رتبه‌بندی کلی بیا بازی";
       const rows = gameId
-        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
+        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_type = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
         : await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").all();
       const lines = (rows.results || []).map((row:any, index:number) => (index + 1) + ". " + row.displayName + " — " + row.rating + " امتیاز · " + row.wins + " برد · " + row.gamesPlayed + " بازی");
       const hint = "برای رتبه‌بندی بازی: /rank hokm یا /rank scala";
@@ -1195,7 +1195,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const gameId = requestedGame === "hokm" || requestedGame === "حکم" ? "hokm" : requestedGame === "scala_quaranta" || requestedGame === "scala" || requestedGame === "اسکالا" ? "scala_quaranta" : null;
       const title = gameId === "hokm" ? "🃏 رتبه‌بندی حکم" : gameId === "scala_quaranta" ? "🂡 رتبه‌بندی اسکالا کوآرانتا" : "🏆 رتبه‌بندی کلی بیا بازی";
       const rows = gameId
-        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
+        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_type = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
         : await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").all();
       const lines = (rows.results || []).map((row:any, index:number) => (index + 1) + ". " + row.displayName + " — " + row.rating + " امتیاز · " + row.wins + " برد · " + row.gamesPlayed + " بازی");
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: title + "\n\n" + (lines.length ? lines.join("\n") : "هنوز رکوردی ثبت نشده است.") + "\n\nبرای رتبه‌بندی بازی: /rank hokm یا /rank scala" });
@@ -1237,7 +1237,7 @@ export default {
         await env.DB.prepare(`
           CREATE TABLE IF NOT EXISTS player_game_stats (
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            game_id TEXT NOT NULL,
+            game_type TEXT NOT NULL,
             rating INTEGER NOT NULL DEFAULT 1000,
             games_played INTEGER NOT NULL DEFAULT 0,
             wins INTEGER NOT NULL DEFAULT 0,
@@ -1246,7 +1246,7 @@ export default {
             current_streak INTEGER NOT NULL DEFAULT 0,
             best_streak INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, game_id)
+            PRIMARY KEY (user_id, game_type)
           )
         `).run();
         steps.push({ step: "player_game_stats", ok: true, detail: "table ready" });
@@ -1270,7 +1270,7 @@ export default {
         steps.push({ step: "backfill_game_id", ok: true });
 
         await env.DB.prepare(
-          "CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating ON player_game_stats(game_id, rating DESC)"
+          "CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating ON player_game_stats(game_type, rating DESC)"
         ).run();
         await env.DB.prepare(
           "CREATE INDEX IF NOT EXISTS idx_game_results_game ON game_results(game_id, created_at DESC)"
@@ -1280,7 +1280,7 @@ export default {
         await env.DB.prepare("DELETE FROM player_game_stats").run();
         await env.DB.prepare(`
           INSERT INTO player_game_stats (
-            user_id, game_id, rating, games_played, wins, losses, draws,
+            user_id, game_type, rating, games_played, wins, losses, draws,
             current_streak, best_streak
           )
           SELECT
@@ -1301,7 +1301,7 @@ export default {
         steps.push({ step: "rebuild_player_game_stats", ok: true });
 
         const counts = await env.DB.prepare(
-          "SELECT game_id, COUNT(*) AS players FROM player_game_stats GROUP BY game_id ORDER BY game_id"
+          "SELECT game_type, COUNT(*) AS players FROM player_game_stats GROUP BY game_type ORDER BY game_type"
         ).all<{ game_id: string; players: number }>();
 
         return Response.json({
@@ -1360,7 +1360,7 @@ export default {
       if (env.DB) {
         const rows = gameId
           ? await env.DB.prepare(
-              "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id AND gr.game_id = ?), 0) AS bestScore FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
+              "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id AND gr.game_id = ?), 0) AS bestScore FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_type = ? ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
             ).bind(gameId, gameId).all()
           : await env.DB.prepare(
               "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
