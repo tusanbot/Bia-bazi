@@ -22,8 +22,6 @@ type Room = {
 
 type Payload = { room: Room; game: unknown | null; error?: string };
 
-const modes = [2, 3, 4];
-
 export default function RoomPage() {
   const [roomId, setRoomId] = useState("");
   const [data, setData] = useState<Payload | null>(null);
