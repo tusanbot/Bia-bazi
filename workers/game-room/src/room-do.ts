@@ -12,7 +12,9 @@ import {
   type Suit,
   type HokmVariantId,
   getHokmVariant,
-  startNoTrumpVariant
+  startNoTrumpVariant,
+  legalCards,
+  trickWinner
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 import {
@@ -107,6 +109,9 @@ type Action =
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
   | { type: "change_player_count"; playerCount: number; initData: string }
+  | { type: "set_seat"; playerId: string; seat: number; initData: string }
+  | { type: "remove_player"; playerId: string; initData: string }
+  | { type: "set_auto_play"; enabled: boolean; delaySeconds: number; initData: string }
   | { type: "set_target_score"; targetScore: 1 | 3 | 5 | 7; initData: string }
   | { type: "set_variant"; variantId: HokmVariantId; initData: string }
   | { type: "start"; initData: string }
@@ -333,6 +338,54 @@ export class GameRoomDurableObject {
     this.chatMessages = (await this.state.storage.get<ChatMessage[]>("chat_messages")) ?? [];
     this.hokmHandHistory = (await this.state.storage.get<HokmHandHistory[]>("hokm_hand_history")) ?? [];
     return this.room;
+  }
+
+  private async scheduleAutoPlay() {
+    if (!this.room || !this.game) return;
+    const config = this.room.getState().config;
+    if (!config.autoPlayEnabled || this.room.getState().status !== "playing" || this.game.phase !== "playing") return;
+    const delay = Math.max(5, Math.min(60, config.autoPlayDelaySeconds ?? 10));
+    await this.state.storage.setAlarm(Date.now() + delay * 1000);
+  }
+
+  private chooseAutoPlayCard(game: HokmState, playerId: string) {
+    const hand = game.hands[playerId] ?? [];
+    const lead = game.trick[0]?.card.suit;
+    const legal = legalCards(hand, lead);
+    if (!legal.length) throw new Error("No legal cards available");
+    const variant = getHokmVariant(game.rules.variantId);
+    const winnerOf = (card: typeof legal[number]) => trickWinner([...game.trick, { playerId, card }], game.hokm, variant.reversedRanks) === playerId;
+    const winning = legal.filter(winnerOf);
+    if (winning.length) {
+      return winning.sort((a, b) => a.rank - b.rank)[0];
+    }
+    return legal.slice().sort((a, b) => a.rank - b.rank)[0];
+  }
+
+  async alarm() {
+    await this.load();
+    if (!this.room || !this.game) return;
+    const room = this.room.getState();
+    if (!room.config.autoPlayEnabled || room.status !== "playing" || this.game.phase !== "playing") return;
+    const playerId = this.game.turnPlayerId;
+    const card = this.chooseAutoPlayCard(this.game, playerId);
+    this.game = playCard(this.game, playerId, card.id);
+    if (this.game.phase === "hand_finished") {
+      this.game = finishHand(this.game);
+      this.hokmHandHistory.push({ hand: this.game.handsCompleted, hokmPlayerId: this.game.hokmPlayerId, hokm: this.game.hokm, winnerIds: [...this.game.handWinnerIds], points: { ...this.game.handPoints }, tricks: { ...this.game.tricksWon }, scores: { ...this.game.scores } });
+      if (this.game.phase === "game_finished") {
+        this.room.finish();
+        await this.persistRoom();
+        await this.persistGameResult(this.game);
+        await this.recordFinalResult(this.game);
+        await this.notifyGroupResult(this.game);
+      } else {
+        this.game = startNextHand(this.game);
+      }
+    }
+    await this.save();
+    await this.syncRegistry();
+    await this.scheduleAutoPlay();
   }
 
   private async save() {
@@ -642,13 +695,15 @@ export class GameRoomDurableObject {
             Date.now(),
             7
           );
+          this.room.setAutoPlay(false, 10);
         } else if (action.gameId === "scala_quaranta") {
           if (action.playerCount < 2 || action.playerCount > 6) throw new Error("Scala Quaranta supports 2 to 6 players");
           this.room = GameRoom.create(
             requestedRoomId,
-            { gameId: "scala_quaranta", playerCount: action.playerCount, minPlayers: 2, maxPlayers: 6 },
+            { gameId: "scala_quaranta", playerCount: action.playerCount, minPlayers: 2, maxPlayers: 6, autoPlayEnabled: false, autoPlayDelaySeconds: 10 },
             { id: userId, displayName: displayName(telegramUser), username: telegramUser.username }
           );
+          this.room.setAutoPlay(false, 10);
         } else {
           throw new Error("Unsupported game");
         }
@@ -707,6 +762,23 @@ export class GameRoomDurableObject {
           this.room.leave(userId);
           break;
 
+        case "set_seat":
+          if (this.room.getState().status !== "waiting") throw new Error("Seats can only be changed before the game starts");
+          if (!this.room.getState().players.some(p => p.id === userId)) throw new Error("You are not a player");
+          this.room.setPlayerSeat(action.playerId, action.seat);
+          break;
+
+        case "remove_player":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can remove players");
+          if (action.playerId === userId) throw new Error("The host cannot remove themselves");
+          this.room.removePlayer(action.playerId);
+          break;
+
+        case "set_auto_play":
+          if (this.room.getState().hostId !== userId) throw new Error("Only the host can change auto play settings");
+          this.room.setAutoPlay(action.enabled, action.delaySeconds);
+          break;
+
         case "change_player_count":
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can change player count");
           this.room.setPlayerCount(action.playerCount);
@@ -762,6 +834,7 @@ export class GameRoomDurableObject {
             if (!variant.hasTrump) this.game = startNoTrumpVariant(this.game);
           }
           this.room.markPlaying();
+          await this.scheduleAutoPlay();
           break;
         }
 
@@ -858,6 +931,7 @@ export class GameRoomDurableObject {
               await this.notifyGroupResult(this.game);
             }
           }
+          await this.scheduleAutoPlay();
           break;
 
         case "finish_hand":
@@ -873,15 +947,13 @@ export class GameRoomDurableObject {
           this.requireGame();
           if (this.room.getState().hostId !== userId) throw new Error("Only the host can finish the game");
           if (this.room.getState().status !== "playing") throw new Error("Game is not playing");
-          this.stopAfterOddHand = true;
-          if (this.game.phase === "hand_finished" && this.game.handsCompleted % 2 === 1) {
-            this.game.phase = "game_finished";
-            this.room.finish();
-            await this.persistRoom();
-            await this.persistGameResult(this.game);
-            await this.recordFinalResult(this.game);
-            await this.notifyGroupResult(this.game);
-          }
+          if (this.game.handsCompleted < 1) throw new Error("هنوز هیچ دستی کامل نشده است؛ برای پایان بازی حداقل یک دست باید تمام شده باشد");
+          this.game.phase = "game_finished";
+          this.room.finish();
+          await this.persistRoom();
+          await this.persistGameResult(this.game);
+          await this.recordFinalResult(this.game);
+          await this.notifyGroupResult(this.game);
           break;
 
         case "cancel_room":
