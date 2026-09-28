@@ -1,3 +1,21 @@
+// CLOUDFLARE_BUILD_SENTINEL_2026_09_28
+// This marker intentionally identifies the exact source snapshot used by the build.
+// Do not remove unless the deployment pipeline is verified against main.
+// Diagnostic marker line 1.
+// Diagnostic marker line 2.
+// Diagnostic marker line 3.
+// Diagnostic marker line 4.
+// Diagnostic marker line 5.
+// Diagnostic marker line 6.
+// Diagnostic marker line 7.
+// Diagnostic marker line 8.
+// Diagnostic marker line 9.
+// Diagnostic marker line 10.
+// Diagnostic marker line 11.
+// Diagnostic marker line 12.
+// Diagnostic marker line 13.
+// Diagnostic marker line 14.
+// Diagnostic marker line 15.
 import type { GamePlayer, PlayerId } from "@bia-bazi/game-engine";
 
 export type PlayerCount = 2 | 3 | 4;
