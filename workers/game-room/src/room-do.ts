@@ -1248,11 +1248,17 @@ export default {
       const initData = request.headers.get("x-telegram-init-data") || "";
       if (!initData) return Response.json({ error: "Telegram authentication required" }, { status: 401 });
       await verifyTelegramInitData(initData, env.TELEGRAM_BOT_TOKEN);
+      const gameIdParam = new URL(request.url).searchParams.get("game");
+      const gameId = gameIdParam === "hokm" || gameIdParam === "scala_quaranta" ? gameIdParam : null;
       if (env.DB) {
-        const rows = await env.DB.prepare(
-          "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
-        ).all();
-        return Response.json({ ranking: rows.results });
+        const rows = gameId
+          ? await env.DB.prepare(
+              "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id AND gr.game_id = ?), 0) AS bestScore FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
+            ).bind(gameId, gameId).all()
+          : await env.DB.prepare(
+              "SELECT u.telegram_id AS playerId, CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.games_played AS gamesPlayed, s.wins, s.losses, s.draws, s.current_streak AS currentStreak, s.best_streak AS bestStreak, COALESCE((SELECT MAX(gr.score_delta) FROM game_results gr WHERE gr.telegram_id = u.telegram_id), 0) AS bestScore FROM player_stats s JOIN users u ON u.id = s.user_id ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 100"
+            ).all();
+        return Response.json({ gameId, ranking: rows.results });
       }
       const registryId = env.GAME_ROOM.idFromName("__room_registry__");
       return env.GAME_ROOM.get(registryId).fetch("https://internal/registry?view=ranking", {
