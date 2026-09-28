@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@bia-bazi/game-room": "0.1.0",
-    "@bia-bazi/hokm-engine": "0.1.0"
+    "@bia-bazi/hokm-engine": "0.1.0",
+    "@bia-bazi/mini-games": "0.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
