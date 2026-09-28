@@ -245,7 +245,7 @@ export default function RoomPage() {
           </button>
         )}
 
-        {canChange && (
+        {!isScala && canChange && (
           <div className="room-actions">
             <span>تعداد دورهای بازی:</span>
             {targetScores.map(score => (
@@ -261,7 +261,7 @@ export default function RoomPage() {
           </div>
         )}
 
-        {canChange && (
+        {!isScala && canChange && (
           <div className="room-actions variant-actions">
             <span>نوع حکم:</span>
             {Object.values(HOKM_VARIANTS).map(variant => (
