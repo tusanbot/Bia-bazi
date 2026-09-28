@@ -1213,6 +1213,103 @@ export default {
       try { return await handleTelegramWebhook(request, env); }
       catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Webhook error" }, { status: 500 }); }
     }
+    if (url.pathname === "/admin/migrate-per-game-rankings" && (request.method === "GET" || request.method === "POST")) {
+      const migrationSecret = new URL(request.url).searchParams.get("secret") || request.headers.get("x-migration-secret");
+      if (!env.TELEGRAM_WEBHOOK_SECRET || migrationSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      if (!env.DB) {
+        return Response.json({ error: "D1 database is not configured" }, { status: 500 });
+      }
+
+      const steps: Array<{ step: string; ok: boolean; detail?: string }> = [];
+      try {
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS player_game_stats (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            game_id TEXT NOT NULL,
+            rating INTEGER NOT NULL DEFAULT 1000,
+            games_played INTEGER NOT NULL DEFAULT 0,
+            wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0,
+            draws INTEGER NOT NULL DEFAULT 0,
+            current_streak INTEGER NOT NULL DEFAULT 0,
+            best_streak INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, game_id)
+          )
+        `).run();
+        steps.push({ step: "player_game_stats", ok: true, detail: "table ready" });
+
+        const columns = await env.DB.prepare("PRAGMA table_info(game_results)").all<{ name: string }>();
+        const hasGameId = (columns.results || []).some(column => column.name === "game_id");
+        if (!hasGameId) {
+          await env.DB.prepare("ALTER TABLE game_results ADD COLUMN game_id TEXT").run();
+          steps.push({ step: "game_results.game_id", ok: true, detail: "column added" });
+        } else {
+          steps.push({ step: "game_results.game_id", ok: true, detail: "column already exists" });
+        }
+
+        await env.DB.prepare(`
+          UPDATE game_results
+          SET game_id = (
+            SELECT game_type FROM game_rooms WHERE game_rooms.id = game_results.room_id
+          )
+          WHERE game_id IS NULL
+        `).run();
+        steps.push({ step: "backfill_game_id", ok: true });
+
+        await env.DB.prepare(
+          "CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating ON player_game_stats(game_id, rating DESC)"
+        ).run();
+        await env.DB.prepare(
+          "CREATE INDEX IF NOT EXISTS idx_game_results_game ON game_results(game_id, created_at DESC)"
+        ).run();
+        steps.push({ step: "indexes", ok: true });
+
+        await env.DB.prepare("DELETE FROM player_game_stats").run();
+        await env.DB.prepare(`
+          INSERT INTO player_game_stats (
+            user_id, game_id, rating, games_played, wins, losses, draws,
+            current_streak, best_streak
+          )
+          SELECT
+            u.id,
+            gr.game_id,
+            1000 + COALESCE(SUM(gr.rating_delta), 0),
+            COUNT(*),
+            SUM(CASE WHEN gr.placement = 1 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN gr.placement > 1 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN gr.placement IS NULL THEN 1 ELSE 0 END),
+            0,
+            0
+          FROM game_results gr
+          JOIN users u ON u.telegram_id = gr.telegram_id
+          WHERE gr.game_id IS NOT NULL
+          GROUP BY u.id, gr.game_id
+        `).run();
+        steps.push({ step: "rebuild_player_game_stats", ok: true });
+
+        const counts = await env.DB.prepare(
+          "SELECT game_id, COUNT(*) AS players FROM player_game_stats GROUP BY game_id ORDER BY game_id"
+        ).all<{ game_id: string; players: number }>();
+
+        return Response.json({
+          ok: true,
+          migration: "per-game-rankings",
+          steps,
+          summary: counts.results || []
+        });
+      } catch (error) {
+        return Response.json({
+          ok: false,
+          migration: "per-game-rankings",
+          steps,
+          error: error instanceof Error ? error.message : "Migration failed"
+        }, { status: 500 });
+      }
+    }
+
     if (url.pathname === "/telegram/setup" && request.method === "POST") {
       const setupSecret = url.searchParams.get("secret") || request.headers.get("x-telegram-setup-secret");
       if (!env.TELEGRAM_WEBHOOK_SECRET || setupSecret !== env.TELEGRAM_WEBHOOK_SECRET) return Response.json({ error: "Unauthorized" }, { status: 401 });
