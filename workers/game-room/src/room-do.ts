@@ -18,6 +18,7 @@ import {
   isLegalMove
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
+import { createMiniGame, applyMiniAction, type MiniGameId, type MiniGameState } from "@bia-bazi/mini-games";
 import {
   createInitialState as createScalaInitialState,
   drawFromDeck as scalaDrawFromDeck,
@@ -102,7 +103,7 @@ type TelegramUser = {
 };
 
 type Action =
-  | { type: "create"; gameId: "hokm" | "scala_quaranta"; playerCount: number; host: unknown; initData: string }
+  | { type: "create"; gameId: "hokm" | "scala_quaranta" | MiniGameId; playerCount: number; host: unknown; initData: string }
   | { type: "create_or_join_group"; gameId: "hokm"; playerCount: HokmPlayerCount; initData: string }
   | { type: "create_group_room"; gameId: "hokm"; playerCount: HokmPlayerCount; roomId: string; chatId: string; hostId: string; hostName: string }
   | { type: "create_inline_room"; gameId: "hokm"; playerCount: HokmPlayerCount; roomId: string; hostId: string; hostName: string }
@@ -134,7 +135,8 @@ type Action =
   | { type: "cancel_room"; initData: string }
   | { type: "close_room"; initData: string }
   | { type: "send_message"; text: string; initData: string }
-  | { type: "list_rooms"; initData: string };
+  | { type: "list_rooms"; initData: string }
+  | { type: "mini_action"; action: Record<string, unknown>; playerId: string; initData: string };
 
 function displayName(user: TelegramUser) {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن";
@@ -323,6 +325,7 @@ export class GameRoomDurableObject {
   private room?: GameRoom;
   private game?: HokmState;
   private scalaGame?: ScalaState;
+  private miniGame?: MiniGameState;
   private stopAfterOddHand = false;
   private chatMessages: ChatMessage[] = [];
   private hokmHandHistory: HokmHandHistory[] = [];
@@ -335,6 +338,7 @@ export class GameRoomDurableObject {
     if (storedRoom) this.room = new GameRoom(storedRoom);
     this.game = await this.state.storage.get<HokmState>("game");
     this.scalaGame = await this.state.storage.get<ScalaState>("scala_game");
+    this.miniGame = await this.state.storage.get<MiniGameState>("mini_game");
     this.stopAfterOddHand = (await this.state.storage.get<boolean>("stop_after_odd_hand")) ?? false;
     this.chatMessages = (await this.state.storage.get<ChatMessage[]>("chat_messages")) ?? [];
     this.hokmHandHistory = (await this.state.storage.get<HokmHandHistory[]>("hokm_hand_history")) ?? [];
@@ -416,6 +420,7 @@ export class GameRoomDurableObject {
     await this.state.storage.put("room", this.room.getState());
     if (this.game) await this.state.storage.put("game", this.game);
     if (this.scalaGame) await this.state.storage.put("scala_game", this.scalaGame);
+    if (this.miniGame) await this.state.storage.put("mini_game", this.miniGame);
     await this.state.storage.put("stop_after_odd_hand", this.stopAfterOddHand);
     await this.state.storage.put("chat_messages", this.chatMessages.slice(-100));
     await this.state.storage.put("hokm_hand_history", this.hokmHandHistory.slice(-100));
@@ -470,6 +475,29 @@ export class GameRoomDurableObject {
     }
   }
 
+  private async persistMiniGameResult(game: MiniGameState) {
+    if (!this.env.DB || !this.room) return;
+    const roomId = this.room.getState().id;
+    const scores = game.scores || {};
+    const ranking = game.players.map(player => ({ player, score: Number(scores[player.id] ?? 0) }))
+      .sort((a,b)=>b.score-a.score);
+    for (let i=0;i<ranking.length;i++) {
+      const item=ranking[i], telegramId=Number(item.player.id);
+      const user=await this.env.DB.prepare("SELECT id FROM users WHERE telegram_id = ? LIMIT 1").bind(telegramId).first<{id:number}>();
+      if(!user) continue;
+      const exists=await this.env.DB.prepare("SELECT id FROM game_results WHERE room_id=? AND telegram_id=? LIMIT 1").bind(roomId,telegramId).first();
+      if(exists) continue;
+      const won=(game.winnerIds||[]).includes(item.player.id);
+      const ratingDelta=won?10:-5;
+      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, game_id, placement, score_delta, rating_delta) VALUES (?,?,?,?,?,?)")
+        .bind(roomId,telegramId,game.gameId,i+1,item.score,ratingDelta).run();
+      await this.env.DB.prepare("UPDATE player_stats SET rating=rating+?, games_played=games_played+1, wins=wins+?, losses=losses+?, current_streak=CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END, best_streak=MAX(best_streak, CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END), updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
+        .bind(ratingDelta,won?1:0,won?0:1,won?1:0,won?1:0,user.id).run();
+      await this.env.DB.prepare("INSERT INTO player_game_stats (user_id,game_type,rating,games_played,wins,losses,draws,current_streak,best_streak) VALUES (?,?,?,1,?,?,0,?,?) ON CONFLICT(user_id,game_type) DO UPDATE SET rating=rating+excluded.rating-1000,games_played=games_played+1,wins=wins+excluded.wins,losses=losses+excluded.losses,current_streak=CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END,best_streak=MAX(best_streak,CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END),updated_at=CURRENT_TIMESTAMP")
+        .bind(user.id,game.gameId,1000+ratingDelta,won?1:0,won?0:1,won?1:0,won?1:0).run();
+    }
+  }
+
   private async syncRegistry() {
     if (!this.room || this.state.id.toString() === "__room_registry__") return;
     try {
@@ -501,7 +529,7 @@ export class GameRoomDurableObject {
   private response(viewerId?: string) {
     if (!this.room) throw new Error("Room does not exist");
 
-    if (!this.game && !this.scalaGame) {
+    if (!this.game && !this.scalaGame && !this.miniGame) {
       return Response.json({ room: this.room.getState(), game: null });
     }
 
@@ -519,6 +547,24 @@ export class GameRoomDurableObject {
         stopAfterOddHand: false,
         chatMessages: this.chatMessages
       });
+    }
+
+    if (this.miniGame) {
+      const game = structuredClone(this.miniGame);
+      if (game.gameId === "spy") {
+        if (game.spyId !== viewerId) delete game.spyId;
+        delete game.location;
+      }
+      if (game.gameId === "battleship") {
+        const boards = game.boards as Record<string, unknown[]>;
+        game.boards = { [viewerId]: boards[viewerId] ?? [] };
+      }
+      if (game.gameId === "haft_khabis") {
+        const hands = game.hands as Record<string, unknown[]>;
+        game.hands = { [viewerId]: hands[viewerId] ?? [] };
+        game.deck = [];
+      }
+      return Response.json({ room: this.room.getState(), game, chatMessages: this.chatMessages });
     }
 
     if (!this.game) throw new Error("Game state is unavailable");
@@ -727,6 +773,15 @@ export class GameRoomDurableObject {
             { id: userId, displayName: displayName(telegramUser), username: telegramUser.username }
           );
           this.room.setAutoPlay(false, 10);
+        } else if (["haft_khabis","chahar_barg","rock_paper_scissors","shelem","tic_tac_toe","battleship","truth_or_dare","spy","backgammon"].includes(action.gameId)) {
+          const id = action.gameId as MiniGameId;
+          const limits: Record<string,[number,number]> = {
+            haft_khabis:[2,6], chahar_barg:[2,4], rock_paper_scissors:[2,6], shelem:[4,4],
+            tic_tac_toe:[2,2], battleship:[2,2], truth_or_dare:[2,20], spy:[3,10], backgammon:[2,2]
+          };
+          const [minPlayers,maxPlayers] = limits[id];
+          if (action.playerCount < minPlayers || action.playerCount > maxPlayers) throw new Error("تعداد بازیکنان این بازی مجاز نیست");
+          this.room = GameRoom.create(requestedRoomId, { gameId:id, playerCount:action.playerCount, minPlayers, maxPlayers }, { id:userId, displayName:displayName(telegramUser), username:telegramUser.username });
         } else {
           throw new Error("Unsupported game");
         }
@@ -766,7 +821,7 @@ export class GameRoomDurableObject {
       if (!this.room) throw new Error("Room does not exist");
 
       if (
-        ["choose_hokm", "discard_two", "draw_two", "play_card", "next_hand", "scala_draw_deck", "scala_draw_discard", "scala_recycle_discard", "scala_lay_melds", "scala_add_card", "scala_replace_joker", "scala_discard", "scala_next_round"].includes(action.type) &&
+        ["choose_hokm", "discard_two", "draw_two", "play_card", "next_hand", "scala_draw_deck", "scala_draw_discard", "scala_recycle_discard", "scala_lay_melds", "scala_add_card", "scala_replace_joker", "scala_discard", "scala_next_round", "mini_action"].includes(action.type) &&
         this.room.getState().status !== "playing"
       ) {
         throw new Error("Room is no longer playing");
@@ -835,7 +890,11 @@ export class GameRoomDurableObject {
           this.room.start();
           const roomState = this.room.getState();
           const players = roomState.players.map(({ id, seat, displayName, username }) => ({ id, seat, displayName, username }));
-          if (roomState.config.gameId === "scala_quaranta") {
+          if (["haft_khabis","chahar_barg","rock_paper_scissors","shelem","tic_tac_toe","battleship","truth_or_dare","spy","backgammon"].includes(roomState.config.gameId)) {
+            const randomBytes = new Uint32Array(1);
+            crypto.getRandomValues(randomBytes);
+            this.miniGame = createMiniGame(roomState.config.gameId as MiniGameId, players, () => randomBytes[0] / 0xffffffff);
+          } else if (roomState.config.gameId === "scala_quaranta") {
             const randomBytes = new Uint32Array(1);
             crypto.getRandomValues(randomBytes);
             const dealer = players[randomBytes[0] % players.length].id;
@@ -861,6 +920,17 @@ export class GameRoomDurableObject {
           await this.scheduleAutoPlay();
           break;
         }
+
+        case "mini_action":
+          if (!this.miniGame) throw new Error("Mini game state is unavailable");
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          this.miniGame = applyMiniAction(this.miniGame, action.action as any, userId);
+          if (this.miniGame.phase === "finished") {
+            this.room.finish();
+            await this.persistRoom();
+            await this.persistMiniGameResult(this.miniGame);
+          }
+          break;
 
         case "scala_draw_deck":
           this.requireScalaGame();
