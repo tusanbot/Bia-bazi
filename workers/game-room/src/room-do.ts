@@ -367,13 +367,33 @@ export class GameRoomDurableObject {
     await this.load();
     if (!this.room || !this.game) return;
     const room = this.room.getState();
-    if (!room.config.autoPlayEnabled || room.status !== "playing" || this.game.phase !== "playing") return;
+    if (!room.config.autoPlayEnabled || room.status !== "playing") return;
+
+    if (this.game.phase === "hand_finished") {
+      this.game = startNextHand(this.game);
+      await this.save();
+      await this.scheduleAutoPlay();
+      return;
+    }
+
+    if (this.game.phase !== "playing") return;
+
     const playerId = this.game.turnPlayerId;
     const card = this.chooseAutoPlayCard(this.game, playerId);
     this.game = playCard(this.game, playerId, card.id);
+
     if (this.game.phase === "hand_finished") {
       this.game = finishHand(this.game);
-      this.hokmHandHistory.push({ hand: this.game.handsCompleted, hokmPlayerId: this.game.hokmPlayerId, hokm: this.game.hokm, winnerIds: [...this.game.handWinnerIds], points: { ...this.game.handPoints }, tricks: { ...this.game.tricksWon }, scores: { ...this.game.scores } });
+      this.hokmHandHistory.push({
+        hand: this.game.handsCompleted,
+        hokmPlayerId: this.game.hokmPlayerId,
+        hokm: this.game.hokm,
+        winnerIds: [...this.game.handWinnerIds],
+        points: { ...this.game.handPoints },
+        tricks: { ...this.game.tricksWon },
+        scores: { ...this.game.scores }
+      });
+
       if (this.game.phase === "game_finished") {
         this.room.finish();
         await this.persistRoom();
@@ -381,12 +401,14 @@ export class GameRoomDurableObject {
         await this.recordFinalResult(this.game);
         await this.notifyGroupResult(this.game);
       } else {
-        this.game = startNextHand(this.game);
+        await this.state.storage.setAlarm(Date.now() + 1000);
       }
+    } else {
+      await this.scheduleAutoPlay();
     }
+
     await this.save();
     await this.syncRegistry();
-    await this.scheduleAutoPlay();
   }
 
   private async save() {
