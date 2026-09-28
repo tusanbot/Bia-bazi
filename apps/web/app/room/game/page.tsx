@@ -459,8 +459,8 @@ export default function HokmGamePage() {
             <div className="section-title"><h2>مدیریت اتاق</h2><span>{isHost ? "میزبان" : "فقط مشاهده"}</span></div>
             {isHost && (
               <div className="management-actions">
-                <button className="secondary" disabled={busy || data.stopAfterOddHand} onClick={() => act({ type: "request_finish" })}>
-                  {data.stopAfterOddHand ? "پایان بازی در دست فرد بعدی" : "اتمام بازی در دست فرد"}
+                <button className="secondary" disabled={busy} onClick={() => act({ type: "request_finish" })}>
+                  اتمام بازی و ثبت آخرین دست کامل
                 </button>
                 <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
                 <button className="secondary danger" disabled={busy} onClick={() => act({ type: "close_room" })}>بستن اتاق</button>
