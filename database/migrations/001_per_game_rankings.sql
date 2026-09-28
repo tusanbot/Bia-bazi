@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS player_game_stats (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  game_id TEXT NOT NULL,
+  game_type TEXT NOT NULL,
   rating INTEGER NOT NULL DEFAULT 1000,
   games_played INTEGER NOT NULL DEFAULT 0,
   wins INTEGER NOT NULL DEFAULT 0,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS player_game_stats (
   current_streak INTEGER NOT NULL DEFAULT 0,
   best_streak INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (user_id, game_id)
+  PRIMARY KEY (user_id, game_type)
 );
 
 ALTER TABLE game_results ADD COLUMN game_id TEXT;
@@ -26,14 +26,14 @@ SET game_id = (
 WHERE game_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating
-  ON player_game_stats(game_id, rating DESC);
+  ON player_game_stats(game_type, rating DESC);
 
 CREATE INDEX IF NOT EXISTS idx_game_results_game
   ON game_results(game_id, created_at DESC);
 
 -- Rebuild per-game stats from historical final results.
 INSERT INTO player_game_stats (
-  user_id, game_id, rating, games_played, wins, losses, draws,
+  user_id, game_type, rating, games_played, wins, losses, draws,
   current_streak, best_streak
 )
 SELECT
@@ -50,7 +50,7 @@ FROM game_results gr
 JOIN users u ON u.telegram_id = gr.telegram_id
 WHERE gr.game_id IS NOT NULL
 GROUP BY u.id, gr.game_id
-ON CONFLICT(user_id, game_id) DO UPDATE SET
+ON CONFLICT(user_id, game_type) DO UPDATE SET
   rating = excluded.rating,
   games_played = excluded.games_played,
   wins = excluded.wins,
