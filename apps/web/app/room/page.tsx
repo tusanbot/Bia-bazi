@@ -217,7 +217,7 @@ export default function RoomPage() {
               <button
                 key={seat}
                 className={`table-seat ${teamForSeat(seat)} ${player ? "occupied" : "empty"} ${mine ? "mine" : ""}`}
-                style={{ "--seat-index": seat } as CSSProperties}
+                data-seat={seat}
                 disabled={!isJoined || room.status !== "waiting" || busy || (!player && false)}
                 onClick={() => act({ type: "set_seat", playerId, seat })}
                 title={player ? (mine ? "جای شما" : `صندلی بازیکن: ${player.displayName}`) : "انتخاب این صندلی"}
