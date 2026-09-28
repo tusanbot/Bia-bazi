@@ -8,7 +8,9 @@
   "dependencies": {
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "@bia-bazi/hokm-engine": "0.1.0",
+    "@bia-bazi/scala-quaranta-engine": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "latest",
