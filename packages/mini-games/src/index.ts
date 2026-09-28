@@ -36,7 +36,7 @@ export function createMiniGame(gameId: MiniGameId, players: MiniPlayer[], rng=Ma
   if (players.length < minPlayers(gameId) || players.length > maxPlayers(gameId)) throw new Error("تعداد بازیکنان این بازی مجاز نیست");
   const base:MiniGameState={gameId,phase:"playing",players:[...players].sort((a,b)=>a.seat-b.seat),scores:emptyScores(players),round:1};
   if(gameId==="haft_khabis"){
-    const d=shuffle(deck(true),rng), hands:Object.assign({},...players.map(p=>({[p.id]:d.splice(0,5)})));
+    const d=shuffle(deck(true),rng); const hands:Record<string, Card[]>={}; for(const p of players) hands[p.id]=d.splice(0,5);
     return {...base,phase:"playing",hands,deck:d,discard:[d.pop()],turnPlayerId:players[0].id};
   }
   if(gameId==="chahar_barg"){
