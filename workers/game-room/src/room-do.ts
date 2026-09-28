@@ -14,7 +14,8 @@ import {
   getHokmVariant,
   startNoTrumpVariant,
   legalCards,
-  trickWinner
+  trickWinner,
+  isLegalMove
 } from "@bia-bazi/hokm-engine";
 import { GameRoom, type GameRoomState } from "@bia-bazi/game-room";
 import {
@@ -351,7 +352,7 @@ export class GameRoomDurableObject {
   private chooseAutoPlayCard(game: HokmState, playerId: string) {
     const hand = game.hands[playerId] ?? [];
     const lead = game.trick[0]?.card.suit;
-    const legal = legalCards(hand, lead);
+    const legal = legalCards(hand, lead).filter(card => isLegalMove(game, playerId, card.id));
     if (!legal.length) throw new Error("No legal cards available");
     const variant = getHokmVariant(game.rules.variantId);
     const winnerOf = (card: typeof legal[number]) => trickWinner([...game.trick, { playerId, card }], game.hokm, variant.reversedRanks) === playerId;
