@@ -163,7 +163,7 @@ export default function RoomPage() {
   const isScala = room.config.gameId === "scala_quaranta";
   const isHokm = room.config.gameId === "hokm";
   const roomGameNames: Record<string,string> = { hokm:"حکم", scala_quaranta:"SKALA", haft_khabis:"هفت خبیث", chahar_barg:"۴ برگ", rock_paper_scissors:"سنگ کاغذ قیچی", shelem:"شلم", tic_tac_toe:"دوز", battleship:"کشتی جنگی", truth_or_dare:"جرأت حقیقت", spy:"جاسوس", backgammon:"نرد" };
-  const playerModes = isScala ? [2, 3, 4, 5, 6] : modes;
+  const playerModes = Array.from({ length: room.config.maxPlayers - room.config.minPlayers + 1 }, (_, i) => room.config.minPlayers + i);
   const seats = Array.from({ length: room.config.playerCount }, (_, i) => i);
   const teamForSeat = (seat: number) => {
     if (room.config.playerCount === 4) return seat % 2 === 0 ? "team-a" : "team-b";
@@ -264,7 +264,7 @@ export default function RoomPage() {
           </div>
         )}
 
-        {!isScala && canChange && (
+        {isHokm && canChange && (
           <div className="room-actions variant-actions">
             <span>نوع حکم:</span>
             {Object.values(HOKM_VARIANTS).map(variant => (
