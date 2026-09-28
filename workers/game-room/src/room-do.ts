@@ -382,11 +382,15 @@ export class GameRoomDurableObject {
       if (existing) continue;
       const user = await this.env.DB.prepare("SELECT id FROM users WHERE telegram_id = ? LIMIT 1").bind(telegramId).first<{ id: number }>();
       if (!user) continue;
+      const gameId = this.room.getState().config.gameId;
       const ratingDelta = won ? 10 : -5;
-      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?)").bind(roomId, telegramId, i + 1, scoreDelta, ratingDelta).run();
+      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, game_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?, ?)").bind(roomId, telegramId, gameId, i + 1, scoreDelta, ratingDelta).run();
       await this.env.DB.prepare(
         "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
       ).bind(ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
+      await this.env.DB.prepare(
+        "INSERT INTO player_game_stats (user_id, game_id, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
+      ).bind(user.id, gameId, 1000 + ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0).run();
     }
   }
 
@@ -995,11 +999,16 @@ export class GameRoomDurableObject {
       const existing = await this.env.DB.prepare("SELECT id FROM game_results WHERE room_id = ? AND telegram_id = ? LIMIT 1").bind(roomId, telegramId).first<{ id: number }>();
       if (existing) continue;
       const won = i === 0;
-      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?)")
-        .bind(roomId, telegramId, i + 1, item.score, won ? 10 : -5).run();
+      const gameId = this.room.getState().config.gameId;
+      const ratingDelta = won ? 10 : -5;
+      await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, game_id, placement, score_delta, rating_delta) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(roomId, telegramId, gameId, i + 1, item.score, ratingDelta).run();
       await this.env.DB.prepare(
         "UPDATE player_stats SET rating = rating + ?, games_played = games_played + 1, wins = wins + ?, losses = losses + ?, current_streak = CASE WHEN ? = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN ? = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-      ).bind(won ? 10 : -5, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
+      ).bind(ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0, user.id).run();
+      await this.env.DB.prepare(
+        "INSERT INTO player_game_stats (user_id, game_id, rating, games_played, wins, losses, draws, current_streak, best_streak) VALUES (?, ?, ?, 1, ?, ?, 0, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET rating = rating + excluded.rating - 1000, games_played = games_played + 1, wins = wins + excluded.wins, losses = losses + excluded.losses, current_streak = CASE WHEN excluded.wins = 1 THEN current_streak + 1 ELSE 0 END, best_streak = CASE WHEN excluded.wins = 1 AND current_streak + 1 > best_streak THEN current_streak + 1 ELSE best_streak END, updated_at = CURRENT_TIMESTAMP"
+      ).bind(user.id, gameId, 1000 + ratingDelta, won ? 1 : 0, won ? 0 : 1, won ? 1 : 0, won ? 1 : 0).run();
     }
   }
 
