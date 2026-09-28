@@ -1162,13 +1162,17 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: message.chat.id, text: "رتبه‌بندی فعلاً در دسترس نیست." });
         return Response.json({ ok: true });
       }
-      const rows = await env.DB.prepare(
-        "SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10"
-      ).all();
-      const lines = (rows.results || []).map((r:any, i:number) => `${i+1}. ${r.displayName} — ${r.rating} امتیاز · ${r.wins} برد`);
+      const requestedGame = (message.text.trim().split(/\s+/)[1] || "").toLowerCase();
+      const gameId = requestedGame === "hokm" || requestedGame === "حکم" ? "hokm" : requestedGame === "scala_quaranta" || requestedGame === "scala" || requestedGame === "اسکالا" ? "scala_quaranta" : null;
+      const title = gameId === "hokm" ? "🃏 رتبه‌بندی حکم" : gameId === "scala_quaranta" ? "🂡 رتبه‌بندی اسکالا کوآرانتا" : "🏆 رتبه‌بندی کلی بیا بازی";
+      const rows = gameId
+        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
+        : await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").all();
+      const lines = (rows.results || []).map((row:any, index:number) => (index + 1) + ". " + row.displayName + " — " + row.rating + " امتیاز · " + row.wins + " برد · " + row.gamesPlayed + " بازی");
+      const hint = "برای رتبه‌بندی بازی: /rank hokm یا /rank scala";
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: "🏆 رتبه‌بندی بیا بازی\n\n" + (lines.length ? lines.join("\n") : "هنوز رکوردی ثبت نشده است.")
+        text: title + "\n\n" + (lines.length ? lines.join("\n") : "هنوز رکوردی ثبت نشده است.") + "\n\n" + hint
       });
       return Response.json({ ok: true });
     }
@@ -1181,6 +1185,21 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const room = await createBotRoom(env, `group-${groupMessage.chat.id}-hokm4`, String(groupMessage.from.id), botUserName(groupMessage.from), String(groupMessage.chat.id));
       const link = `https://t.me/${username}?startapp=${encodeURIComponent(`room_${room.id}`)}`;
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "🃏 اتاق حکم آماده است.\n\nبرای ورود به بازی روی دکمه زیر بزنید:", reply_markup: { inline_keyboard: [[{ text: "🎮 ورود به بازی حکم", url: link }]] } });
+    }
+    if (command === "/rank") {
+      if (!env.DB) {
+        await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "رتبه‌بندی فعلاً در دسترس نیست." });
+        return Response.json({ ok: true });
+      }
+      const requestedGame = (groupMessage.text.trim().split(/\s+/)[1] || "").toLowerCase();
+      const gameId = requestedGame === "hokm" || requestedGame === "حکم" ? "hokm" : requestedGame === "scala_quaranta" || requestedGame === "scala" || requestedGame === "اسکالا" ? "scala_quaranta" : null;
+      const title = gameId === "hokm" ? "🃏 رتبه‌بندی حکم" : gameId === "scala_quaranta" ? "🂡 رتبه‌بندی اسکالا کوآرانتا" : "🏆 رتبه‌بندی کلی بیا بازی";
+      const rows = gameId
+        ? await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_game_stats s JOIN users u ON u.id = s.user_id WHERE s.game_id = ? AND s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").bind(gameId).all()
+        : await env.DB.prepare("SELECT CASE WHEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) <> '' THEN TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) ELSE COALESCE(u.username, 'بازیکن') END AS displayName, s.rating, s.wins, s.games_played AS gamesPlayed FROM player_stats s JOIN users u ON u.id = s.user_id WHERE s.games_played > 0 ORDER BY s.rating DESC, s.wins DESC, s.games_played ASC LIMIT 10").all();
+      const lines = (rows.results || []).map((row:any, index:number) => (index + 1) + ". " + row.displayName + " — " + row.rating + " امتیاز · " + row.wins + " برد · " + row.gamesPlayed + " بازی");
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: title + "\n\n" + (lines.length ? lines.join("\n") : "هنوز رکوردی ثبت نشده است.") + "\n\nبرای رتبه‌بندی بازی: /rank hokm یا /rank scala" });
+      return Response.json({ ok: true });
     }
   }
   return Response.json({ ok: true });
