@@ -840,7 +840,7 @@ export class GameRoomDurableObject {
           this.game = playCard(this.game, userId, action.cardId);
           if (this.game.phase === "hand_finished") {
             this.game = finishHand(this.game);
-            this.hokmHandHistory.push({ hand: this.game.handsCompleted + 1, hokmPlayerId: this.game.hokmPlayerId, hokm: this.game.hokm, winnerIds: [...this.game.handWinnerIds], points: { ...this.game.handPoints }, tricks: { ...this.game.tricksWon }, scores: { ...this.game.scores } });
+            this.hokmHandHistory.push({ hand: this.game.handsCompleted, hokmPlayerId: this.game.hokmPlayerId, hokm: this.game.hokm, winnerIds: [...this.game.handWinnerIds], points: { ...this.game.handPoints }, tricks: { ...this.game.tricksWon }, scores: { ...this.game.scores } });
 
             if (this.stopAfterOddHand && this.game.handsCompleted % 2 === 1) {
               this.game.phase = "game_finished";
