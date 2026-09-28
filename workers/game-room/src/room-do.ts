@@ -70,6 +70,16 @@ type ChatMessage = {
   createdAt: number;
 };
 
+type HokmHandHistory = {
+  hand: number;
+  hokmPlayerId: string;
+  hokm?: Suit;
+  winnerIds: string[];
+  points: Record<string, number>;
+  tricks: Record<string, number>;
+  scores: Record<string, number>;
+};
+
 type GameResultRecord = {
   roomId: string;
   gameId: string;
@@ -91,8 +101,8 @@ type TelegramUser = {
 type Action =
   | { type: "create"; gameId: "hokm" | "scala_quaranta"; playerCount: number; host: unknown; initData: string }
   | { type: "create_or_join_group"; gameId: "hokm"; playerCount: HokmPlayerCount; initData: string }
-  | { type: "create_group_room"; gameId: "hokm"; playerCount: HokmPlayerCount; chatId: string; hostId: string; hostName: string }
-  | { type: "create_inline_room"; gameId: "hokm"; playerCount: HokmPlayerCount; hostId: string; hostName: string }
+  | { type: "create_group_room"; gameId: "hokm"; playerCount: HokmPlayerCount; roomId: string; chatId: string; hostId: string; hostName: string }
+  | { type: "create_inline_room"; gameId: "hokm"; playerCount: HokmPlayerCount; roomId: string; hostId: string; hostName: string }
   | { type: "state" }
   | { type: "join"; player: unknown; initData: string }
   | { type: "leave"; playerId: string; initData: string }
@@ -309,6 +319,7 @@ export class GameRoomDurableObject {
   private scalaGame?: ScalaState;
   private stopAfterOddHand = false;
   private chatMessages: ChatMessage[] = [];
+  private hokmHandHistory: HokmHandHistory[] = [];
 
   constructor(private state: DurableObjectState, private env: Env) {}
 
@@ -320,6 +331,7 @@ export class GameRoomDurableObject {
     this.scalaGame = await this.state.storage.get<ScalaState>("scala_game");
     this.stopAfterOddHand = (await this.state.storage.get<boolean>("stop_after_odd_hand")) ?? false;
     this.chatMessages = (await this.state.storage.get<ChatMessage[]>("chat_messages")) ?? [];
+    this.hokmHandHistory = (await this.state.storage.get<HokmHandHistory[]>("hokm_hand_history")) ?? [];
     return this.room;
   }
 
@@ -330,6 +342,7 @@ export class GameRoomDurableObject {
     if (this.scalaGame) await this.state.storage.put("scala_game", this.scalaGame);
     await this.state.storage.put("stop_after_odd_hand", this.stopAfterOddHand);
     await this.state.storage.put("chat_messages", this.chatMessages.slice(-100));
+    await this.state.storage.put("hokm_hand_history", this.hokmHandHistory.slice(-100));
   }
 
   private async persistUser(user: TelegramUser) {
@@ -452,7 +465,8 @@ export class GameRoomDurableObject {
       room: this.room.getState(),
       game,
       stopAfterOddHand: this.stopAfterOddHand,
-      chatMessages: this.chatMessages
+      chatMessages: this.chatMessages,
+      hokmHandHistory: this.hokmHandHistory
     });
   }
 
@@ -591,7 +605,7 @@ export class GameRoomDurableObject {
 
       if (action.type === "create_group_room" || action.type === "create_inline_room") {
         if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
-        const roomId = action.type === "create_group_room" ? `group-${action.chatId}-hokm4` : `inline-${action.hostId}-${Date.now().toString(36)}`;
+        const roomId = action.roomId;
         if (!this.room || !["waiting", "playing"].includes(this.room.getState().status)) {
           this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
           await this.persistRoom();
@@ -826,6 +840,7 @@ export class GameRoomDurableObject {
           this.game = playCard(this.game, userId, action.cardId);
           if (this.game.phase === "hand_finished") {
             this.game = finishHand(this.game);
+            this.hokmHandHistory.push({ hand: this.game.handsCompleted + 1, hokmPlayerId: this.game.hokmPlayerId, hokm: this.game.hokm, winnerIds: [...this.game.handWinnerIds], points: { ...this.game.handPoints }, tricks: { ...this.game.tricksWon }, scores: { ...this.game.scores } });
 
             if (this.stopAfterOddHand && this.game.handsCompleted % 2 === 1) {
               this.game.phase = "game_finished";
@@ -912,37 +927,21 @@ export class GameRoomDurableObject {
     const roomId = this.room?.getState().id ?? "";
     const match = /^group-(-?\\d+)-hokm4$/.exec(roomId);
     if (!match) return;
-
     const chatId = match[1];
-    const ranking = game.players
-      .map(player => ({ player, score: game.scores[player.id] ?? 0 }))
-      .sort((a, b) => b.score - a.score);
-
-    const lines = ranking.map((item, index) => {
-      const name = item.player.displayName || item.player.username || "بازیکن";
-      const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "▫️";
-      return `${medal} ${index + 1}. ${name} — ${item.score} امتیاز`;
+    const ranking = game.players.map(player => ({ player, score: game.scores[player.id] ?? 0, tricks: game.tricksWon[player.id] ?? 0 })).sort((a, b) => b.score - a.score || b.tricks - a.tricks);
+    const medal = (i: number) => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "▫️";
+    const lines = ranking.map((item, index) => `${medal(index)} ${index + 1}. ${item.player.displayName || "بازیکن"} — ${item.score} امتیاز · ${item.tricks} دست`);
+    const variant = getHokmVariant(game.rules.variantId);
+    const suitName: Record<Suit, string> = { spades: "♠️ پیک", hearts: "♥️ دل", diamonds: "♦️ خشت", clubs: "♣️ گشنیز" };
+    const historyLines = this.hokmHandHistory.map(hand => {
+      const winners = hand.winnerIds.map(id => game.players.find(p => p.id === id)?.displayName || "بازیکن").join(" و ");
+      const points = game.players.map(p => `${p.displayName}: ${hand.points[p.id] ?? 0}`).join(" | ");
+      const tricks = game.players.map(p => `${p.displayName}: ${hand.tricks[p.id] ?? 0}`).join(" | ");
+      return `دست ${hand.hand}: ${hand.hokm ? suitName[hand.hokm] : "بدون حکم"} · برنده: ${winners} · امتیاز: ${points} · دست‌ها: ${tricks}`;
     });
-
-    const winner = ranking[0]?.player.displayName || ranking[0]?.player.username || "بازیکن";
-    const text = [
-      "🏆 نتیجه نهایی بازی حکم",
-      "",
-      ...lines,
-      "",
-      `برنده: ${winner}`,
-      "بازی بعدی را می‌توانید از داخل بیا بازی شروع کنید."
-    ].join("\\n");
-
-    try {
-      await telegramBotApi(this.env.TELEGRAM_BOT_TOKEN, "sendMessage", {
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true
-      });
-    } catch {
-      // Group notification must never break or roll back a completed game.
-    }
+    const winner = ranking[0]?.player.displayName || "بازیکن";
+    const text = ["🏆 نتیجه نهایی «بیا بازی»","━━━━━━━━━━━━━━","🃏 بازی: حکم",`🎯 نوع: ${variant.title}`,`👥 بازیکنان: ${game.players.length} نفره`,`📊 هدف: ${game.rules.targetScore} امتیاز`,"","📋 جدول نهایی",...lines,"","📝 نتیجه دست‌ها",...(historyLines.length ? historyLines : ["اطلاعات دست‌ها ثبت نشده است."]),"",`👑 برنده: ${winner}`,"━━━━━━━━━━━━━━","برای بازی دوباره، بیا بازی را باز کنید."].join("\n");
+    try { await telegramBotApi(this.env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: chatId, text, disable_web_page_preview: true }); } catch {}
   }
 
   private async recordFinalResult(game: HokmState) {
@@ -1060,7 +1059,7 @@ async function createBotRoom(env: Env, roomId: string, hostId: string, hostName:
   const response = await env.GAME_ROOM.get(id).fetch(`https://internal/api/room?room=${encodeURIComponent(roomId)}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-bia-bot-token": env.TELEGRAM_BOT_TOKEN },
-    body: JSON.stringify({ type: chatId ? "create_group_room" : "create_inline_room", gameId: "hokm", playerCount: 4, chatId, hostId, hostName })
+    body: JSON.stringify({ type: chatId ? "create_group_room" : "create_inline_room", gameId: "hokm", playerCount: 4, roomId, chatId, hostId, hostName })
   });
   const json = await response.json() as { room?: { id: string }; error?: string };
   if (!response.ok || !json.room) throw new Error(json.error || "ساخت اتاق ناموفق بود");
@@ -1088,14 +1087,14 @@ async function handleTelegramWebhook(request: Request, env: Env) {
 
   const message = update.message;
   if (message?.text && message.from && (message.chat.type === "private" || message.chat.type === "channel")) {
-    const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
+    const command = message.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
     const userName = botUserName(message.from);
 
     if (command === "/start") {
       const link = `https://t.me/${username}?startapp=home`;
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: `سلام ${userName}\\n\\nبه «بیا بازی» خوش آمدید.\\n\\nبازی کن، رقابت کن و رکورد بزن.\\n\\nاز منوی زیر وارد بازی شوید یا برای بازی حکم از دستور /hokm در گروه استفاده کنید.`,
+        text: `سلام ${userName}\n\nبه «بیا بازی» خوش آمدید.\n\nبازی کن، رقابت کن و رکورد بزن.\n\nاز منوی زیر وارد بازی شوید یا برای بازی حکم از دستور /hokm در گروه استفاده کنید.`,
         reply_markup: { inline_keyboard: [[{ text: "ورود به بیا بازی", url: link }], [{ text: "راهنما", callback_data: "help" }]] }
       });
       return Response.json({ ok: true });
@@ -1104,7 +1103,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     if (command === "/help") {
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: "راهنمای بیا بازی\\n\\n• بازی‌ها داخل Mini App اجرا می‌شوند.\\n• نتیجه هر بازی ثبت می‌شود.\\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\\n• برای مشاهده آمار خودتان، /profile را بزنید.\\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.",
+        text: "راهنمای بیا بازی\n\n• بازی‌ها داخل Mini App اجرا می‌شوند.\n• نتیجه هر بازی ثبت می‌شود.\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\n• برای مشاهده آمار خودتان، /profile را بزنید.\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.",
         disable_web_page_preview: true
       });
       return Response.json({ ok: true });
@@ -1121,7 +1120,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const p = row || { displayName: userName, rating: 1000, gamesPlayed: 0, wins: 0, losses: 0, draws: 0, currentStreak: 0, bestStreak: 0, bestScore: 0 };
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: `👤 پروفایل ${p.displayName}\\n\\nامتیاز: ${p.rating}\\nبازی: ${p.gamesPlayed}\\nبرد: ${p.wins}\\nباخت: ${p.losses}\\nرکورد برد متوالی: ${p.bestStreak}\\nبهترین امتیاز بازی: ${p.bestScore}`
+        text: `👤 پروفایل ${p.displayName}\n\nامتیاز: ${p.rating}\nبازی: ${p.gamesPlayed}\nبرد: ${p.wins}\nباخت: ${p.losses}\nرکورد برد متوالی: ${p.bestStreak}\nبهترین امتیاز بازی: ${p.bestScore}`
       });
       return Response.json({ ok: true });
     }
@@ -1137,7 +1136,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const lines = (rows.results || []).map((r:any, i:number) => `${i+1}. ${r.displayName} — ${r.rating} امتیاز · ${r.wins} برد`);
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: "🏆 رتبه‌بندی بیا بازی\\n\\n" + (lines.length ? lines.join("\\n") : "هنوز رکوردی ثبت نشده است.")
+        text: "🏆 رتبه‌بندی بیا بازی\n\n" + (lines.length ? lines.join("\n") : "هنوز رکوردی ثبت نشده است.")
       });
       return Response.json({ ok: true });
     }
@@ -1149,7 +1148,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     if (command === "/hokm") {
       const room = await createBotRoom(env, `group-${message.chat.id}-hokm4`, String(message.from.id), botUserName(message.from), String(message.chat.id));
       const link = `https://t.me/${username}?startapp=${encodeURIComponent(`room_${room.id}`)}`;
-      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: message.chat.id, text: "🃏 اتاق حکم آماده است. هر بازیکن برای ورود روی دکمه زیر بزند.", reply_markup: { inline_keyboard: [[{ text: "ورود به بازی حکم", url: link }]] } });
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "🃏 اتاق حکم آماده است. هر بازیکن برای ورود روی دکمه زیر بزند.", reply_markup: { inline_keyboard: [[{ text: "ورود به بازی حکم", url: link }]] } });
     }
   }
   return Response.json({ ok: true });
