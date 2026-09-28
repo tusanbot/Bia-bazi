@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function GamesPage() {
   return <main className="shell">
-    <header className="hero"><div className="brand-mark">🎮</div><div><div className="eyebrow">GAMES</div><h1>بازی‌ها</h1><p>بازی موردنظر را انتخاب کنید.</p></div></header>
+    <header className="hero"><div className="brand-mark">🎮</div><div><div className="eyebrow">GAMES</div><h1>بازی‌ها</h1><p>۱۱ بازی برای انتخاب و بازی آنلاین.</p></div></header>
     <section className="game-card">
       <div className="game-icon">🃏</div>
       <div className="game-copy">
