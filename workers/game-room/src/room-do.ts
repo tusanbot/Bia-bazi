@@ -1209,6 +1209,16 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/__version" && request.method === "GET") {
+      return Response.json({
+        app: "bia-bazi",
+        worker: "game-room",
+        version: "diagnostic-2026-09-28-v1",
+        migrationEndpoint: "/admin/migrate-per-game-rankings",
+        source: "github:tusanbot/Bia-bazi"
+      });
+    }
+
     if (url.pathname === "/telegram/webhook" && request.method === "POST") {
       try { return await handleTelegramWebhook(request, env); }
       catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Webhook error" }, { status: 500 }); }
