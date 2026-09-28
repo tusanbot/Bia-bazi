@@ -359,6 +359,28 @@ export default function HokmGamePage() {
           </div>
         )}
 
+        <div className={`players-around-table table-${game.players.length}`}>
+          <div className="table-center game-center">
+            <strong>حکم</strong>
+            <small>{game.rules.playerCount} نفره</small>
+          </div>
+          {[...game.players].sort((a,b) => a.seat - b.seat).map(player => {
+            const teamClass = game.players.length === 4
+              ? (player.seat % 2 === 0 ? "team-a" : "team-b")
+              : game.players.length === 3
+                ? ([0,1,2][player.seat] === 0 ? "team-a" : [0,1,2][player.seat] === 1 ? "team-b" : "team-c")
+                : "team-a";
+            return (
+              <div key={player.id} className={`game-seat ${teamClass} ${player.id === game.turnPlayerId ? "active" : ""} ${player.id === playerId ? "mine" : ""}`}>
+                <span className="game-seat-number">{player.seat + 1}</span>
+                <span>👤</span>
+                <strong>{shortName(player.displayName, 11)}</strong>
+                <small>{player.id === game.turnPlayerId ? "نوبت" : player.id === playerId ? "شما" : ""}</small>
+              </div>
+            );
+          })}
+        </div>
+
         <div className="trick-table">
           {(game.phase === "hand_finished" || game.phase === "game_finished" || game.phase === "playing") && game.lastCompletedTrick?.length
             ? game.lastCompletedTrick.map(play => (
