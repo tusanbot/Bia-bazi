@@ -1091,11 +1091,34 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     const userName = botUserName(message.from);
 
     if (command === "/start") {
-      const link = `https://t.me/${username}?startapp=home`;
+      const homeLink = `https://t.me/${username}?startapp=home`;
+      const gamesLink = `https://t.me/${username}?startapp=games`;
+      const addGroupLink = `https://t.me/${username}?startgroup=hokm`;
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: `سلام ${userName}\n\nبه «بیا بازی» خوش آمدید.\n\nبازی کن، رقابت کن و رکورد بزن.\n\nاز منوی زیر وارد بازی شوید یا برای بازی حکم از دستور /hokm در گروه استفاده کنید.`,
-        reply_markup: { inline_keyboard: [[{ text: "ورود به بیا بازی", url: link }], [{ text: "راهنما", callback_data: "help" }]] }
+        text: [
+          `🎮 سلام ${userName}!`,
+          "",
+          "╭──────────────╮",
+          "│  🃏 «بیا بازی»  │",
+          "╰──────────────╯",
+          "",
+          "بازی‌های چندنفره را مستقیم داخل تلگرام انجام بده.",
+          "",
+          "🎲 بازی‌ها",
+          "├ 🃏 حکم — ۲ تا ۴ نفر",
+          "└ 🂡 اسکالا کوآرانتا — ۲ تا ۶ نفر",
+          "",
+          "🏆 بازی کن • امتیاز بگیر • رکورد بزن",
+          "📊 نتیجه، رتبه و آمار بازی‌ها ذخیره می‌شود."
+        ].join("\n"),
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🎮 ورود به بیا بازی", url: homeLink }],
+            [{ text: "🃏 بازی‌ها و آموزش", url: gamesLink }],
+            [{ text: "👥 افزودن به گروه", url: addGroupLink }]
+          ]
+        }
       });
       return Response.json({ ok: true });
     }
@@ -1144,11 +1167,11 @@ async function handleTelegramWebhook(request: Request, env: Env) {
 
   const groupMessage = update.message;
   if (groupMessage?.text && groupMessage.from && (groupMessage.chat.type === "group" || groupMessage.chat.type === "supergroup")) {
-    const command = message.text.trim().split(/\\s+/)[0].split("@")[0].toLowerCase();
+    const command = groupMessage.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
     if (command === "/hokm") {
-      const room = await createBotRoom(env, `group-${message.chat.id}-hokm4`, String(message.from.id), botUserName(message.from), String(message.chat.id));
+      const room = await createBotRoom(env, `group-${groupMessage.chat.id}-hokm4`, String(groupMessage.from.id), botUserName(groupMessage.from), String(groupMessage.chat.id));
       const link = `https://t.me/${username}?startapp=${encodeURIComponent(`room_${room.id}`)}`;
-      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "🃏 اتاق حکم آماده است. هر بازیکن برای ورود روی دکمه زیر بزند.", reply_markup: { inline_keyboard: [[{ text: "ورود به بازی حکم", url: link }]] } });
+      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "🃏 اتاق حکم آماده است.\n\nبرای ورود به بازی روی دکمه زیر بزنید:", reply_markup: { inline_keyboard: [[{ text: "🎮 ورود به بازی حکم", url: link }]] } });
     }
   }
   return Response.json({ ok: true });
