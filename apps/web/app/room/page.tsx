@@ -16,7 +16,7 @@ type Room = {
   id: string;
   status: "waiting" | "starting" | "playing" | "finished" | "cancelled";
   hostId: string;
-  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number; targetScore?: 1 | 3 | 5 | 7; variantId?: HokmVariantId };
+  config: { gameId: string; playerCount: number; minPlayers: number; maxPlayers: number; targetScore?: 1 | 3 | 5 | 7; variantId?: HokmVariantId; autoPlayEnabled?: boolean; autoPlayDelaySeconds?: number };
   players: RoomPlayer[];
 };
 
@@ -161,6 +161,14 @@ export default function RoomPage() {
   const selectedVariant = room.config.gameId === "hokm" ? HOKM_VARIANTS[room.config.variantId ?? "standard"] : null;
   const isScala = room.config.gameId === "scala_quaranta";
   const playerModes = isScala ? [2, 3, 4, 5, 6] : modes;
+  const seats = Array.from({ length: room.config.playerCount }, (_, i) => i);
+  const teamForSeat = (seat: number) => {
+    if (room.config.playerCount === 4) return seat % 2 === 0 ? "team-a" : "team-b";
+    if (room.config.playerCount === 3) return ["team-a", "team-b", "team-c"][seat] ?? "team-a";
+    return "team-a";
+  };
+  const playerAtSeat = (seat: number) => room.players.find(p => p.seat === seat);
+  const autoDelay = room.config.autoPlayDelaySeconds ?? 10;
 
   return (
     <main className="shell">
@@ -197,14 +205,36 @@ export default function RoomPage() {
           </div>
         )}
 
-        <div className="players-list">
-          {room.players.map(player => (
-            <div className="player-row" key={player.id}>
-              <span className="seat">{player.seat + 1}</span>
-              <span>{player.displayName}</span>
-              {player.id === room.hostId && <small>میزبان</small>}
-            </div>
-          ))}
+        <div className="game-table-preview">
+          <div className="table-center">
+            <strong>{isScala ? "SKALA" : "حکم"}</strong>
+            <small>{room.config.playerCount} نفره</small>
+          </div>
+          {seats.map(seat => {
+            const player = playerAtSeat(seat);
+            const mine = player?.id === playerId;
+            return (
+              <button
+                key={seat}
+                className={`table-seat ${teamForSeat(seat)} ${player ? "occupied" : "empty"} ${mine ? "mine" : ""}`}
+                style={{ "--seat-index": seat } as React.CSSProperties}
+                disabled={!isJoined || room.status !== "waiting" || busy || (!player && false)}
+                onClick={() => act({ type: "set_seat", playerId, seat })}
+                title={player ? (mine ? "جای شما" : `صندلی بازیکن: ${player.displayName}`) : "انتخاب این صندلی"}
+              >
+                <span className="seat-number">{seat + 1}</span>
+                <span className="seat-avatar">{player ? "👤" : "＋"}</span>
+                <strong>{player ? player.displayName : "صندلی خالی"}</strong>
+                {player?.id === room.hostId && <small>میزبان</small>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="team-legend">
+          <span className="team-a">تیم ۱</span>
+          {room.config.playerCount === 4 && <span className="team-b">تیم ۲</span>}
+          {room.config.playerCount === 3 && <span className="team-c">بازیکن ۳</span>}
+          <small>برای تغییر یار، صندلی خودتان را انتخاب کنید.</small>
         </div>
 
         {!user && <p className="error">برای ورود به بازی، اتاق را از داخل تلگرام باز کنید.</p>}
@@ -250,6 +280,27 @@ export default function RoomPage() {
         )}
 
         {canChange && (
+          <div className="auto-play-panel">
+            <div>
+              <strong>بازی خودکار</strong>
+              <small>{room.config.autoPlayEnabled ? `اگر نوبت بازیکنی برسد، بعد از ${autoDelay} ثانیه کارت انتخاب می‌شود.` : "در حالت خاموش، همه حرکت‌ها دستی هستند."}</small>
+            </div>
+            <button
+              className={room.config.autoPlayEnabled ? "mode-chip selected" : "mode-chip"}
+              disabled={busy}
+              onClick={() => act({ type: "set_auto_play", enabled: !room.config.autoPlayEnabled, delaySeconds: autoDelay })}
+            >
+              {room.config.autoPlayEnabled ? "روشن" : "خاموش"}
+            </button>
+            <div className="auto-delay">
+              {[5,10,15,20,30,45,60].map(seconds => (
+                <button key={seconds} className={autoDelay === seconds ? "mode-chip selected" : "mode-chip"} disabled={busy} onClick={() => act({ type: "set_auto_play", enabled: Boolean(room.config.autoPlayEnabled), delaySeconds: seconds })}>{seconds} ثانیه</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {canChange && (
           <div className="room-actions">
             <span>تعداد بازیکن:</span>
             {playerModes.map(mode => (
@@ -291,6 +342,19 @@ export default function RoomPage() {
           >
             خروج از اتاق
           </button>
+        )}
+
+        {isHost && room.status === "waiting" && (
+          <div className="host-player-management">
+            <strong>مدیریت بازیکنان</strong>
+            {room.players.filter(p => p.id !== playerId).map(player => (
+              <div key={player.id} className="host-player-row">
+                <span>{player.displayName}</span>
+                <button className="secondary danger" disabled={busy} onClick={() => act({ type: "remove_player", playerId: player.id })}>حذف</button>
+              </div>
+            ))}
+            {!room.players.some(p => p.id !== playerId) && <small>بازیکن دیگری برای مدیریت وجود ندارد.</small>}
+          </div>
         )}
 
         {isHost && room.status === "waiting" && (
