@@ -720,8 +720,6 @@ export class GameRoomDurableObject {
         ? { type: "state" }
         : await request.json<Action>();
 
-      const botToken = request.headers.get("x-bia-bot-token") || "";
-
       if (action.type === "state") {
         const initData = request.headers.get("x-telegram-init-data") || "";
         const telegramUser = await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
