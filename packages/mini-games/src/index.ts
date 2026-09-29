@@ -166,7 +166,9 @@ export function createMiniGame(gameId: MiniGameId, inputPlayers: MiniPlayer[], r
       ...base,
       phase: "choice",
       currentPlayerId: players[0].id,
-      prompts: []
+      prompts: [],
+      roundsPlayed: 0,
+      targetRounds: 10
     };
   }
 
@@ -270,6 +272,12 @@ function truthDare(s: MiniGameState, a: MiniAction, p: string, rng: () => number
     if (kind !== "حقیقت" && kind !== "جرأت") throw new Error("نوع نامعتبر است");
     const source = kind === "حقیقت" ? truthPrompts : darePrompts;
     s.prompts.push({ playerId: p, kind, text: source[Math.floor(rng() * source.length)] });
+    s.roundsPlayed = Number(s.roundsPlayed || 0) + 1;
+    if (s.roundsPlayed >= Number(s.targetRounds || 10)) {
+      s.phase = "finished";
+      s.winnerIds = [];
+      return s;
+    }
     s.currentPlayerId = nextPlayer(s, p);
     s.turnPlayerId = s.currentPlayerId;
     return s;
