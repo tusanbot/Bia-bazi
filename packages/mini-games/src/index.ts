@@ -342,7 +342,8 @@ function battleship(s: MiniGameState, a: MiniAction, p: string) {
     if (!horizontal && !vertical) throw new Error("کشتی باید افقی یا عمودی باشد");
     if (cells.some(x => boards[p].includes(x))) throw new Error("کشتی‌ها نباید همپوشانی داشته باشند");
     if (sizes[p].length >= 4) throw new Error("همه کشتی‌ها قبلاً چیده شده‌اند");
-    const requiredSizes = [4,3,3,2];\n    const requiredCount = requiredSizes.filter(n => n === cells.length).length;\n    if (sizes[p].filter(n => n === cells.length).length >= requiredCount) throw new Error("تعداد این نوع کشتی کامل شده است");
+    const requiredSizes = [4,3,3,2];
+    const requiredCount = requiredSizes.filter(n => n === cells.length).length;\n    if (sizes[p].filter(n => n === cells.length).length >= requiredCount) throw new Error("تعداد این نوع کشتی کامل شده است");
     boards[p].push(...cells);
     sizes[p].push(cells.length);
     if (sizes[p].length === 4) ready[p] = true;
