@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GameCard } from "../components/GameCard";
 import {
-  initTelegram,
+  telegramInitData,\n  initTelegram,
   telegramChatInstance,
   telegramChatType,
   telegramStartParam,
@@ -41,7 +41,7 @@ export default function Home() {
     setUser(currentUser);
 
     if (currentUser) {
-      const initData = window.Telegram?.WebApp?.initData ?? "";
+      const initData = telegramInitData() ?? "";
       fetch("/api/profile", { headers: { "x-telegram-init-data": initData }, cache: "no-store" })
         .then(res => res.ok ? res.json() : Promise.reject(new Error()))
         .then(json => setProfileStats(json.profile))
@@ -58,7 +58,7 @@ export default function Home() {
       const roomId = startParam.slice("room_".length);
       if (roomId) {
         setCreating(true);
-        const initData = window.Telegram?.WebApp?.initData ?? "";
+        const initData = telegramInitData() ?? "";
 
         fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
           method: "POST",
@@ -98,7 +98,7 @@ export default function Home() {
       setCreating(true);
 
       const roomId = `group-${chatInstance}-hokm4`;
-      const initData = window.Telegram?.WebApp?.initData ?? "";
+      const initData = telegramInitData() ?? "";
 
       fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
@@ -135,7 +135,7 @@ export default function Home() {
     setError("");
     try {
       const roomId = crypto.randomUUID();
-      const initData = window.Telegram?.WebApp?.initData ?? "";
+      const initData = telegramInitData() ?? "";
       const res = await fetch(`/api/room?room=${roomId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
