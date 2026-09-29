@@ -46,7 +46,6 @@ export default function RoomPage() {
 
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
-      telegramInitData()Unsafe?.start_param ??
       new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
       "";
     const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
