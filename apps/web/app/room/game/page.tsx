@@ -110,7 +110,6 @@ export default function HokmGamePage() {
     });
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
-      telegramInitData()Unsafe?.start_param ??
       new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
       "";
     const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
@@ -261,8 +260,7 @@ export default function HokmGamePage() {
         const tricks = currentGame.players.map(p => `${nameOf(p.id)}: ${hand.tricks[p.id] ?? 0}`).join(" | ");
         return `دست ${hand.hand}: ${hand.hokm ? suitNames[hand.hokm] : "بدون حکم"} · برنده: ${winnerNames} · امتیاز: ${points} · دست‌ها: ${tricks}`;
       });
-      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0} امتیاز · ${currentGame.tricksWon[p.id] ?? 0} دست`).join("
-");
+      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0} امتیاز · ${currentGame.tricksWon[p.id] ?? 0} دست`).join("\\n");
       const shareText = [
         "🏆 نتیجه نهایی «بیا بازی»",
         "━━━━━━━━━━━━━━",
