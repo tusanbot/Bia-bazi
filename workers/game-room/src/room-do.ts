@@ -171,7 +171,7 @@ async function verifyAdminSession(request: Request, env: Env) {
   const secret = env.ADMIN_SESSION_SECRET?.trim();
   if (!secret) return false;
   const cookie = request.headers.get("Cookie") || "";
-  const match = cookie.match(/(?:^|;\\s*)bia_admin=([^;]+)/);
+  const match = cookie.match(/(?:^|;\s*)bia_admin=([^;]+)/);
   if (!match) return false;
   const parts = match[1].split(".");
   if (parts.length !== 2) return false;
