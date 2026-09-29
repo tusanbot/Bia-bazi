@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
+import { telegramInitData,\n  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 
 type Card = { id: string; suit?: "spades" | "hearts" | "diamonds" | "clubs"; rank?: number; joker: boolean };
 type Meld = { id: string; type: "set" | "run"; cards: Card[] };
@@ -67,7 +67,7 @@ export default function ScalaRoomPage() {
 
   const refresh = useCallback(async () => {
     if (!roomId) return;
-    const initData = window.Telegram?.WebApp?.initData ?? "";
+    const initData = telegramInitData() ?? "";
     const res = await fetch("/api/room?room=" + encodeURIComponent(roomId), {
       cache: "no-store",
       headers: { "x-telegram-init-data": initData }
@@ -91,7 +91,7 @@ export default function ScalaRoomPage() {
       const res = await fetch("/api/room?room=" + encodeURIComponent(roomId), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
+        body: JSON.stringify({ ...body, initData: telegramInitData() ?? "" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
