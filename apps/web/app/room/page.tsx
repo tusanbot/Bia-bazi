@@ -94,9 +94,26 @@ export default function RoomPage() {
       .then(json => setInviteLink(json.url || ""))
       .catch(() => setInviteLink(""));
 
-    refresh().catch(e => setError(e.message));
-    const timer = setInterval(() => refresh().catch(e => setError(e.message)), 2000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      if (stopped) return;
+      if (!document.hidden) {
+        try {
+          await refresh();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "خطا در دریافت اتاق");
+        }
+      }
+      if (!stopped) timer = window.setTimeout(poll, document.hidden ? 5000 : 2000);
+    };
+
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [refresh]);
 
   async function act(body: object) {
