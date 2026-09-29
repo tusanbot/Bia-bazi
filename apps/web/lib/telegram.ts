@@ -68,3 +68,29 @@ export function initTelegram() {
   app?.ready?.();
   app?.expand?.();
 }
+
+/**
+ * Telegram injects WebApp data asynchronously in some Telegram clients.
+ * Never read initData only once during the first React effect; wait briefly
+ * for the WebView bridge to become ready.
+ */
+export async function waitForTelegram(timeoutMs = 4000): Promise<TelegramWebApp | null> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const app = telegramWebApp();
+    if (app) {
+      app.ready?.();
+      app.expand?.();
+      if (app.initData || app.initDataUnsafe?.user?.id) return app;
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+  }
+
+  return telegramWebApp();
+}
+
+export async function waitForTelegramInitData(timeoutMs = 4000): Promise<string> {
+  const app = await waitForTelegram(timeoutMs);
+  return app?.initData ?? "";
+}
