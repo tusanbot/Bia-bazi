@@ -2314,10 +2314,26 @@ export default {
       return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
     }
 
-    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+    // TEMPORARY TELEGRAM/API DIAGNOSTIC MODE:
+    // Keep the Telegram webhook, setup/status endpoints, APIs and Durable
+    // Objects reachable while the Next.js Web App is disabled. This prevents
+    // the SPA fallback from masking an incorrect Worker deployment/route.
+    // Re-enable the two ASSETS branches below after Telegram is verified.
+    const WEB_APP_ENABLED = false;
+
+    if (WEB_APP_ENABLED && (url.pathname === "/admin" || url.pathname === "/admin/")) {
       const adminUrl = new URL(request.url);
       adminUrl.pathname = "/admin/";
       return env.ASSETS.fetch(new Request(adminUrl.toString(), request));
+    }
+
+    if (!WEB_APP_ENABLED) {
+      return Response.json({
+        ok: false,
+        error: "Web App temporarily disabled",
+        worker: "bia-bazi",
+        mode: "telegram-api-only"
+      }, { status: 503 });
     }
 
     return env.ASSETS.fetch(request);
