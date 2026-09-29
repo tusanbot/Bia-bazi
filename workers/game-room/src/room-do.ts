@@ -928,7 +928,14 @@ export class GameRoomDurableObject {
           return Response.json({ ok: true });
         }
         if (internalUrl.pathname === "/telegram-action") {
-          const body = await request.json() as { userId?: string; displayName?: string; username?: string; action?: string; arg?: string };
+          const params = internalUrl.searchParams;
+          const body = {
+            userId: params.get("userId") || "",
+            displayName: params.get("displayName") || "بازیکن",
+            username: params.get("username") || undefined,
+            action: params.get("action") || "",
+            arg: params.get("arg") || ""
+          };
           const userId = String(body.userId || "");
           const telegramDisplayName = body.displayName || "بازیکن";
           if (!userId || !body.action) throw new Error("Invalid Telegram action");
@@ -939,7 +946,43 @@ export class GameRoomDurableObject {
           }
           const actionName = body.action;
           const arg = body.arg || "";
-          if (actionName === "join") {
+          const hostId = this.room.getState().hostId;
+          if (actionName === "manage") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تنظیمات بازی را تغییر دهد");
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta) {
+              meta.managementUserId = userId;
+              await this.state.storage.put("telegram_board", meta);
+            }
+          } else if (actionName === "manage_back") {
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta) {
+              delete meta.managementUserId;
+              await this.state.storage.put("telegram_board", meta);
+            }
+          } else if (actionName === "set_target_score") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد دورها را تغییر دهد");
+            const score = Number(arg);
+            if (![1,3,5,7].includes(score)) throw new Error("تعداد دور نامعتبر است");
+            this.room.setTargetScore(score as 1|3|5|7);
+          } else if (actionName === "set_auto_play") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی خودکار را تغییر دهد");
+            const enabled = arg === "1";
+            this.room.setAutoPlay(enabled, this.room.getState().config.autoPlayDelaySeconds ?? 10);
+          } else if (actionName === "set_auto_delay") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تأخیر بازی خودکار را تغییر دهد");
+            const seconds = Number(arg);
+            this.room.setAutoPlay(Boolean(this.room.getState().config.autoPlayEnabled), seconds);
+          } else if (actionName === "change_player_count") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد بازیکنان را تغییر دهد");
+            this.room.setPlayerCount(Number(arg));
+          } else if (actionName === "cancel_room") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را لغو کند");
+            this.room.cancel();
+          } else if (actionName === "close_room") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را ببندد");
+            this.room.close();
+          } else if (actionName === "join") {
             if (!this.room.getState().players.some((p:any)=>p.id===userId)) {
               this.room.join({id:userId, displayName:telegramDisplayName, username:body.username});
             }
@@ -1523,6 +1566,7 @@ type TelegramBoardMeta = {
   messageId: number;
   pvMessages: Record<string, number>;
   selections: Record<string, string[]>;
+  managementUserId?: string;
 };
 
 function telegramTeamEmoji(room: any, playerId: string) {
@@ -1579,7 +1623,23 @@ function telegramRoomText(room: any, game?: any) {
   return lines.join("\n");
 }
 
-function telegramBoardKeyboard(room: any, game?: any) {
+function telegramBoardKeyboard(room: any, game?: any, managementUserId?: string) {
+  if (managementUserId && room.status === "waiting") {
+    const cfg = room.config || {};
+    const auto = Boolean(cfg.autoPlayEnabled);
+    const delay = cfg.autoPlayDelaySeconds ?? 10;
+    const rows:any[][] = [
+      [{text:"🎯 دور: " + (cfg.targetScore ?? 7), callback_data:"h|"+room.id+"|m"}],
+      [1,3,5,7].map(score => ({text:(cfg.targetScore===score?"✅ ":"")+" "+score+" دور",callback_data:"h|"+room.id+"|r|"+score})),
+      [{text:"👥 "+cfg.playerCount+" نفره",callback_data:"h|"+room.id+"|m"}],
+      [2,3,4].filter((n:number)=>n>=cfg.minPlayers && n<=cfg.maxPlayers).map((n:number)=>({text:(cfg.playerCount===n?"✅ ":"")+" "+n+" نفره",callback_data:"h|"+room.id+"|mode|"+n})),
+      [{text:"🤖 بازی خودکار: "+(auto?"روشن":"خاموش"),callback_data:"h|"+room.id+"|a|"+(auto?"0":"1")}],
+      [5,10,15,20,30,45,60].map(seconds => ({text:(delay===seconds?"✅ ":"")+seconds+"ث",callback_data:"h|"+room.id+"|ad|"+seconds})),
+      [{text:"❌ لغو اتاق",callback_data:"h|"+room.id+"|cancel"},{text:"🔒 بستن اتاق",callback_data:"h|"+room.id+"|close"}],
+      [{text:"↩️ بازگشت",callback_data:"h|"+room.id+"|b"}]
+    ];
+    return {inline_keyboard: rows};
+  }
   const seats = [0,1,2,3];
   const labelForSeat = (seat: number) => {
     const p = telegramSeatPlayer(room,seat);
@@ -1599,6 +1659,9 @@ function telegramBoardKeyboard(room: any, game?: any) {
   else if (game?.phase === "hand_finished") keyboard.push([{ text: "🏁 ثبت نتیجه دست", callback_data: `h|${room.id}|finish` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
   else if (game?.phase === "game_finished") keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
   else keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  if (room.status === "waiting") {
+    keyboard.push([{ text: "⚙️ مدیریت بازی", callback_data: `h|${room.id}|m` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  }
   return { inline_keyboard: keyboard };
 }
 
@@ -1609,13 +1672,16 @@ async function telegramGetBoardMeta(state: DurableObjectState) {
 async function telegramEditBoard(env: Env, state: DurableObjectState, room: any, game?: any) {
   const meta = await telegramGetBoardMeta(state);
   if (!meta) return;
+  const managementUserId = meta.managementUserId;
   const response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "editMessageText", {
     chat_id: meta.chatId,
     message_id: meta.messageId,
-    text: telegramRoomText(room, game),
+    text: managementUserId && room.status === "waiting"
+      ? telegramRoomText(room, game) + "\n\n⚙️ <b>مدیریت بازی</b>"
+      : telegramRoomText(room, game),
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: telegramBoardKeyboard(room, game)
+    reply_markup: telegramBoardKeyboard(room, game, managementUserId)
   });
   if (!response?.ok && !String(response?.description || "").includes("message is not modified")) {
     throw new Error(response?.description || "Telegram board update failed");
@@ -1723,10 +1789,39 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const action = parts[2] || "x";
       const arg = parts[3] || "";
       const roomDo = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomId));
-      const response = await roomDo.fetch("https://internal/telegram-action", {
-        method: "POST",
-        headers: { "content-type":"application/json", "x-bia-bot-token":env.TELEGRAM_BOT_TOKEN },
-        body: JSON.stringify({ userId:String(q.from.id), displayName:botUserName(q.from), username:q.from.username, action: action==="s" ? "seat" : action==="c" ? "pv" : action==="j" ? "join" : action==="t" ? "trump" : action==="p" ? "play" : action==="q" ? "toggle_card" : action==="qdone" ? "discard_done" : action==="d" ? "draw" : action==="f" ? "finish" : action==="n" ? "next" : action==="start" ? "start" : action==="leave" ? "leave" : action==="pv" ? "pv" : action==="x" ? "noop" : action, arg })
+      const mappedAction =
+        action==="s" ? "seat" :
+        action==="c" ? "pv" :
+        action==="j" ? "join" :
+        action==="t" ? "trump" :
+        action==="p" ? "play" :
+        action==="q" ? "toggle_card" :
+        action==="qdone" ? "discard_done" :
+        action==="d" ? "draw" :
+        action==="f" ? "finish" :
+        action==="n" ? "next" :
+        action==="start" ? "start" :
+        action==="leave" ? "leave" :
+        action==="m" ? "manage" :
+        action==="b" ? "manage_back" :
+        action==="r" ? "set_target_score" :
+        action==="a" ? "set_auto_play" :
+        action==="ad" ? "set_auto_delay" :
+        action==="mode" ? "change_player_count" :
+        action==="cancel" ? "cancel_room" :
+        action==="close" ? "close_room" :
+        action==="pv" ? "pv" :
+        action==="x" ? "noop" : action;
+      const query = new URLSearchParams({
+        userId:String(q.from.id),
+        displayName:botUserName(q.from),
+        action:mappedAction,
+        arg
+      });
+      if (q.from.username) query.set("username", q.from.username);
+      const response = await roomDo.fetch("https://internal/telegram-action?" + query.toString(), {
+        method: "GET",
+        headers: { "x-bia-bot-token":env.TELEGRAM_BOT_TOKEN }
       });
       if (!response.ok) {
         const err = await response.json().catch(()=>({error:"عملیات ناموفق بود"})) as any;
