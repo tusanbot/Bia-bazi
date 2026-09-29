@@ -281,3 +281,5 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .text-input{width:100%;min-height:44px;border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:8px 12px;font:inherit}
 .games-grid{display:grid;gap:10px}
 @media (max-width:520px){.ship-grid{gap:2px}.ship-grid .mode-chip{min-height:28px}.ttt-grid .mode-chip{min-height:64px}}
+
+.games-stack{display:flex;flex-direction:column;gap:10px}.game-card-enhanced{min-height:124px;align-items:flex-start;position:relative;overflow:hidden}.game-copy-enhanced{min-width:0}.game-card-actions{display:flex;align-items:center;margin-right:auto}.game-card .play{min-width:64px;min-height:40px}.game-card .learn-link{display:inline-flex;align-items:center;min-height:32px;margin-top:5px}.active-room button,.bottom-nav a,.primary,.secondary{min-height:40px}@media(max-width:520px){.shell{padding:16px 12px 92px}.game-card-enhanced{padding:12px;gap:10px}.game-icon{width:52px;height:52px;flex:0 0 52px}.game-copy-enhanced h3{font-size:15px}}
