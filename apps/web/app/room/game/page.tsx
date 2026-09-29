@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
+import { telegramInitData,\n  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
@@ -109,7 +109,7 @@ export default function HokmGamePage() {
     });
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
-      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
+      telegramInitData()Unsafe?.start_param ??
       new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
       "";
     const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
@@ -132,7 +132,7 @@ export default function HokmGamePage() {
 
 
   const refresh = useCallback(async () => {
-    const initData = window.Telegram?.WebApp?.initData ?? "";
+    const initData = telegramInitData() ?? "";
     const res = await fetchWithTimeout(`/api/room?room=${encodeURIComponent(roomId)}`, {
       cache: "no-store",
       headers: initData ? { "x-telegram-init-data": initData } : {}
@@ -179,7 +179,7 @@ export default function HokmGamePage() {
       const res = await fetchWithTimeout(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
+        body: JSON.stringify({ ...body, initData: telegramInitData() ?? "" })
       });
       let json: Payload;
       try {
