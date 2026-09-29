@@ -149,16 +149,11 @@ CREATE TABLE IF NOT EXISTS group_members (
   PRIMARY KEY (chat_id, telegram_id)
 );
 
--- Existing baseline installations already contain game_results.game_id.
--- This UPDATE is intentionally safe and simply backfills NULL values.
-UPDATE game_results
-SET game_id = (
-  SELECT game_type
-  FROM game_rooms
-  WHERE game_rooms.id = game_results.room_id
-)
-WHERE game_id IS NULL;
-
+-- Do not derive game_results.game_id from game_rooms here.
+-- Older databases may use a different room-game column name, while
+-- game_results.game_id is already part of the baseline schema.
+-- Existing NULL game_id values are left untouched rather than making
+-- the migration depend on a non-guaranteed room column.
 CREATE INDEX IF NOT EXISTS idx_player_stats_rating
   ON player_stats(rating DESC);
 
