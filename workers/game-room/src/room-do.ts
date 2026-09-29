@@ -1895,7 +1895,7 @@ export default {
       return Response.json({
         app: "bia-bazi",
         worker: "game-room",
-        version: "telegram-hokm-inline-2026-09-29-v1",
+        version: "telegram-hokm-inline-2026-09-29-v2",
         migrationEndpoint: "/admin/migrate-per-game-rankings",
         source: "github:tusanbot/Bia-bazi"
       });
@@ -2008,7 +2008,25 @@ export default {
       }
     }
 
-    if (url.pathname === "/telegram/setup" && request.method === "POST") {
+    if (url.pathname === "/telegram/status" && request.method === "GET") {
+      const setupSecret = url.searchParams.get("secret") || request.headers.get("x-telegram-setup-secret");
+      if (!env.TELEGRAM_WEBHOOK_SECRET || setupSecret !== env.TELEGRAM_WEBHOOK_SECRET) return Response.json({ error: "Unauthorized" }, { status: 401 });
+      const [me, webhook] = await Promise.all([
+        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getMe", {}),
+        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getWebhookInfo", {})
+      ]);
+      return Response.json({
+        ok: Boolean(me?.ok && webhook?.ok),
+        worker: "game-room",
+        webhookUrl: webhook?.result?.url || null,
+        pendingUpdateCount: webhook?.result?.pending_update_count ?? null,
+        lastErrorDate: webhook?.result?.last_error_date ?? null,
+        lastErrorMessage: webhook?.result?.last_error_message ?? null,
+        bot: me?.result ? { id: me.result.id, username: me.result.username } : null
+      });
+    }
+
+    if (url.pathname === "/telegram/setup" && (request.method === "GET" || request.method === "POST")) {
       const setupSecret = url.searchParams.get("secret") || request.headers.get("x-telegram-setup-secret");
       if (!env.TELEGRAM_WEBHOOK_SECRET || setupSecret !== env.TELEGRAM_WEBHOOK_SECRET) return Response.json({ error: "Unauthorized" }, { status: 401 });
       const webhookUrl = new URL("/telegram/webhook", url.origin).toString();
