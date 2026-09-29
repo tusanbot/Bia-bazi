@@ -559,45 +559,95 @@ function backgammon(s: MiniGameState, a: MiniAction, p: string, rng: () => numbe
   const points = s.points as Record<string,number[]>;
   const bar = s.bar as Record<string,number>;
   const borneOff = s.borneOff as Record<string,number>;
-  const me = s.players[0].id === p;
-  const dir = me ? 1 : -1;
+  const playerIndex = s.players.findIndex(x => x.id === p);
+  const me = playerIndex === 0;
+  const direction = me ? 1 : -1;
   const ownSign = me ? 1 : -1;
-  const oppSign = -ownSign;
-  const own = points[p];
   const opponent = s.players.find(x => x.id !== p)!;
+  const own = points[p];
   const opp = points[opponent.id];
 
   if (a.type === "roll") {
     if (dice.length) throw new Error("تاس قبلاً ریخته شده");
-    const d1 = 1 + Math.floor(rng()*6), d2 = 1 + Math.floor(rng()*6);
-    s.dice = [d1,d2];
+    const d1 = 1 + Math.floor(rng() * 6);
+    const d2 = 1 + Math.floor(rng() * 6);
+    s.dice = [d1, d2];
     s.movesLeft = d1 === d2 ? [d1,d1,d1,d1] : [d1,d2];
     s.phase = "moving";
     return s;
   }
 
-  if (a.type !== "move" || !movesLeft.length) throw new Error("حرکت نامعتبر");
-  if (bar[p] > 0 && !Number.isInteger(a.to)) throw new Error("ابتدا مهره خارج از بار را وارد کنید");
-  const from = Number(a.from), to = Number(a.to);
-  const distance = me ? to - from : from - to;
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || from > 23 || to < 0 || to > 23) {
-    throw new Error("خانه نامعتبر");
+  if (a.type === "pass") {
+    if (!movesLeft.length) throw new Error("تاسی برای پایان نوبت وجود ندارد");
+    s.dice = [];
+    s.movesLeft = [];
+    s.phase = "rolling";
+    s.turnPlayerId = opponent.id;
+    return s;
   }
+
+  if (a.type !== "move" || !movesLeft.length) throw new Error("حرکت نامعتبر");
+  const rawFrom = a.from;
+  const rawTo = Number(a.to);
+  const fromIsBar = rawFrom === "bar";
+  const from = fromIsBar ? -1 : Number(rawFrom);
+
+  if (!Number.isInteger(rawTo) || rawTo < -1 || rawTo > 24) throw new Error("خانه نامعتبر");
+  if (fromIsBar && bar[p] <= 0) throw new Error("مهره‌ای روی بار ندارید");
+
+  const allOwn = own.reduce((sum, value) => sum + Math.max(0, value * ownSign), 0) + borneOff[p];
+  const homeCount = me
+    ? own.slice(18).reduce((sum, value) => sum + Math.max(0, value), 0)
+    : own.slice(0, 6).reduce((sum, value) => sum + Math.max(0, -value), 0);
+  const canBearOff = bar[p] === 0 && allOwn === 15 && homeCount === 15;
+
+  let distance: number;
+  let target: number;
+  if (fromIsBar) {
+    distance = me ? rawTo + 1 : 24 - rawTo;
+    target = rawTo;
+  } else {
+    if (!Number.isInteger(from) || from < 0 || from > 23) throw new Error("خانه مبدأ نامعتبر");
+    distance = me ? rawTo - from : from - rawTo;
+    target = rawTo;
+  }
+
   const dieIndex = movesLeft.indexOf(distance);
   if (dieIndex < 0) throw new Error("این حرکت با تاس ممکن نیست");
-  if (bar[p] > 0) throw new Error("ورود از بار هنوز در رابط کاربری فعال نشده است");
-  if (own[from] <= 0) throw new Error("مهره شما در این خانه نیست");
-  if (opp[to] < -1 && oppSign === -1 || opp[to] > 1 && oppSign === 1) throw new Error("خانه بسته است");
-  const targetOpp = opp[to] * oppSign;
-  if (targetOpp === 1) {
-    opp[to] = 0;
-    bar[opponent.id] += 1;
+
+  const bearingOff = me ? target === 24 : target === -1;
+  if (bearingOff) {
+    if (!canBearOff) throw new Error("هنوز همه مهره‌ها وارد خانه پایانی نشده‌اند");
+    if (!fromIsBar && own[from] * ownSign <= 0) throw new Error("مهره شما در این خانه نیست");
+    if (!fromIsBar) own[from] -= ownSign;
+    else bar[p] -= 1;
+    borneOff[p] += 1;
+  } else {
+    if (target < 0 || target > 23) throw new Error("مقصد نامعتبر");
+    if (!fromIsBar && own[from] * ownSign <= 0) throw new Error("مهره شما در این خانه نیست");
+    const opponentCount = Math.max(0, opp[target] * -ownSign);
+    if (opponentCount >= 2) throw new Error("این خانه بسته است");
+
+    if (fromIsBar) bar[p] -= 1;
+    else own[from] -= ownSign;
+
+    if (opponentCount === 1) {
+      opp[target] = 0;
+      bar[opponent.id] += 1;
+    }
+    own[target] += ownSign;
   }
-  own[from] -= 1;
-  own[to] += 1;
-  movesLeft.splice(dieIndex,1);
-  if (own.every(n => n <= 0)) throw new Error("وضعیت مهره‌ها نامعتبر است");
-  if (to === (me ? 23 : 0) && borneOff[p] >= 15) s.phase = "finished";
+
+  movesLeft.splice(dieIndex, 1);
+  if (borneOff[p] >= 15) {
+    s.phase = "finished";
+    s.winnerIds = [p];
+    s.scores[p] += 1;
+    s.dice = [];
+    s.movesLeft = [];
+    return s;
+  }
+
   if (!movesLeft.length) {
     s.dice = [];
     s.phase = "rolling";
@@ -605,7 +655,6 @@ function backgammon(s: MiniGameState, a: MiniAction, p: string, rng: () => numbe
   }
   return s;
 }
-
 export function applyMiniAction(state: MiniGameState, action: MiniAction, playerId: string, rng = Math.random): MiniGameState {
   const s = structuredClone(state) as MiniGameState;
   if (!s.players.some(p => p.id === playerId)) throw new Error("بازیکن در اتاق نیست");
