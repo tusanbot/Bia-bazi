@@ -1746,6 +1746,12 @@ export default {
               body:JSON.stringify({ type:"delete" })
             });
             if (!result.ok) return Response.json(await result.json(),{status:result.status});
+            const registryId = env.GAME_ROOM.idFromName("__room_registry__");
+            await env.GAME_ROOM.get(registryId).fetch("https://internal/registry", {
+              method: "POST",
+              headers: { "x-room-registry-token": env.TELEGRAM_BOT_TOKEN, "content-type": "application/json" },
+              body: JSON.stringify({ type: "sync", room: null, roomId: body.roomId })
+            });
             await env.DB.prepare("DELETE FROM game_results WHERE room_id=?").bind(body.roomId).run();
             await env.DB.prepare("DELETE FROM game_players WHERE room_id=?").bind(body.roomId).run();
             await env.DB.prepare("DELETE FROM game_rooms WHERE id=?").bind(body.roomId).run();
