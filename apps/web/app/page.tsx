@@ -24,10 +24,13 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
+    let cancelled = false;
     initTelegram();
 
-    const currentUser = telegramUser();
-      const startParam = telegramStartParam();
+    const startParam = telegramStartParam();
+    void waitForTelegram().then(app => {
+      if (cancelled) return;
+      const currentUser = app?.initDataUnsafe?.user ?? telegramUser();
     if (startParam === "games") {
       router.replace("/games");
       return;
@@ -117,6 +120,10 @@ export default function Home() {
           setCreating(false);
         });
     }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function createRoom(game: "hokm" | "scala_quaranta" = "hokm") {
