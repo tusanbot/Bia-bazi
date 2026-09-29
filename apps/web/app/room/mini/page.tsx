@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initTelegram, telegramUser } from "../../../lib/telegram";
+import { initTelegramtelegramUser, waitForTelegram } from "../../../lib/telegram";
 
 const names:Record<string,string>={haft_khabis:"هفت خبیث",chahar_barg:"۴ برگ",rock_paper_scissors:"سنگ کاغذ قیچی",shelem:"شلم",tic_tac_toe:"دوز",battleship:"کشتی جنگی",truth_or_dare:"جرأت حقیقت",spy:"جاسوس",backgammon:"نرد"};
 
