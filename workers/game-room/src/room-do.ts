@@ -143,13 +143,13 @@ type Action =
   | { type: "mini_action"; action: Record<string, unknown>; playerId: string; initData: string };
 
 function base64UrlEncode(value: string) {
-  return btoa(unescape(encodeURIComponent(value))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function base64UrlDecode(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-  return decodeURIComponent(escape(atob(padded)));
+  return atob(padded);
 }
 
 async function hmacHex(secret: string, value: string) {
