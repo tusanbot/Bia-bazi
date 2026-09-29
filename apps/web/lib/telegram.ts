@@ -24,30 +24,71 @@ declare global {
   }
 }
 
+function rawTelegramInitData(): string {
+  if (typeof window === "undefined") return "";
+
+  // Telegram's WebApp bridge normally exposes this as WebApp.initData.
+  // Some Android/iOS clients can expose the bridge a little later; the
+  // original launch payload is also present in the URL fragment.
+  const sources = [
+    window.location.hash.replace(/^#/, ""),
+    window.location.search.replace(/^\?/, "")
+  ];
+
+  for (const source of sources) {
+    if (!source) continue;
+    const params = new URLSearchParams(source);
+    const value = params.get("tgWebAppData");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function rawTelegramStartParam(): string {
+  if (typeof window === "undefined") return "";
+  const sources = [
+    window.location.hash.replace(/^#/, ""),
+    window.location.search.replace(/^\?/, "")
+  ];
+
+  for (const source of sources) {
+    if (!source) continue;
+    const params = new URLSearchParams(source);
+    const value = params.get("tgWebAppStartParam");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function userFromInitData(initData: string): TelegramUser | null {
+  if (!initData) return null;
+  try {
+    const raw = new URLSearchParams(initData).get("user");
+    if (!raw) return null;
+    return JSON.parse(raw) as TelegramUser;
+  } catch {
+    return null;
+  }
+}
+
 export function telegramWebApp(): TelegramWebApp | null {
   if (typeof window === "undefined") return null;
   return window.Telegram?.WebApp ?? null;
 }
 
 export function telegramInitData(): string {
-  return telegramWebApp()?.initData ?? "";
+  return telegramWebApp()?.initData || rawTelegramInitData();
 }
 
 export function telegramUser(): TelegramUser | null {
-  return telegramWebApp()?.initDataUnsafe?.user ?? null;
+  return telegramWebApp()?.initDataUnsafe?.user ?? userFromInitData(telegramInitData());
 }
 
 export function telegramStartParam(): string {
   const fromTelegram = telegramWebApp()?.initDataUnsafe?.start_param ?? "";
-  if (fromTelegram) return fromTelegram;
-
-  // Telegram also exposes tgWebAppStartParam as a GET parameter
-  // when a Mini App is opened through a direct link with startapp.
-  if (typeof window !== "undefined") {
-    return new URLSearchParams(window.location.search).get("tgWebAppStartParam") ?? "";
-  }
-
-  return "";
+  return fromTelegram || rawTelegramStartParam();
 }
 
 export function telegramChatInstance(): string {
@@ -69,12 +110,7 @@ export function initTelegram() {
   app?.expand?.();
 }
 
-/**
- * Telegram injects WebApp data asynchronously in some Telegram clients.
- * Never read initData only once during the first React effect; wait briefly
- * for the WebView bridge to become ready.
- */
-export async function waitForTelegram(timeoutMs = 4000): Promise<TelegramWebApp | null> {
+export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp | null> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -82,15 +118,24 @@ export async function waitForTelegram(timeoutMs = 4000): Promise<TelegramWebApp 
     if (app) {
       app.ready?.();
       app.expand?.();
-      if (app.initData || app.initDataUnsafe?.user?.id) return app;
+      if (app.initData || rawTelegramInitData()) return app;
     }
+    if (rawTelegramInitData()) return app;
     await new Promise(resolve => window.setTimeout(resolve, 100));
   }
 
   return telegramWebApp();
 }
 
-export async function waitForTelegramInitData(timeoutMs = 4000): Promise<string> {
-  const app = await waitForTelegram(timeoutMs);
-  return app?.initData ?? "";
+export async function waitForTelegramInitData(timeoutMs = 6000): Promise<string> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const initData = telegramInitData();
+    if (initData) return initData;
+    initTelegram();
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+  }
+
+  return telegramInitData();
 }
