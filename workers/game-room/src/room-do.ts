@@ -971,6 +971,13 @@ export class GameRoomDurableObject {
           } else if (actionName === "finish") {
             if (!this.game) throw new Error("بازی شروع نشده است");
             this.game=finishHand(this.game);
+            if (this.game.phase === "game_finished") {
+              this.room.finish();
+              await this.persistRoom();
+              await this.persistGameResult(this.game);
+              await this.recordFinalResult(this.game);
+              await this.notifyGroupResult(this.game);
+            }
           } else if (actionName === "next") {
             if (!this.game) throw new Error("بازی شروع نشده است");
             this.game=startNextHand(this.game);
@@ -1369,7 +1376,7 @@ export class GameRoomDurableObject {
 
   private async notifyGroupResult(game: HokmState) {
     const roomId = this.room?.getState().id ?? "";
-    const match = /^group-(-?\\d+)-hokm4$/.exec(roomId);
+    const match = /^group-(-?\\d+)-hokm4(?:-[a-z0-9]+)?$/.exec(roomId);
     if (!match) return;
     const chatId = match[1];
     const ranking = game.players.map(player => ({ player, score: game.scores[player.id] ?? 0, tricks: game.tricksWon[player.id] ?? 0 })).sort((a, b) => b.score - a.score || b.tricks - a.tricks);
