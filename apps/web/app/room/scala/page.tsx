@@ -61,9 +61,6 @@ export default function ScalaRoomPage() {
     return () => {
       cancelled = true;
     };
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const playerId = user ? String(user.id) : "";
@@ -81,7 +78,7 @@ export default function ScalaRoomPage() {
   }, [roomId]);
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !user) return;
     refresh().catch(e => setError(e.message));
     const timer = window.setInterval(() => refresh().catch(e => setError(e.message)), 1200);
     return () => window.clearInterval(timer);
