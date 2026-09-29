@@ -741,7 +741,7 @@ export class GameRoomDurableObject {
         return Response.json({ room: this.room.getState(), game: null });
       }
 
-      const telegramUser = await verifyTelegramInitData(action.initData, botToken);
+      const telegramUser = await verifyTelegramInitData(action.initData, this.env.TELEGRAM_BOT_TOKEN);
       const userId = String(telegramUser.id);
       await this.persistUser(telegramUser);
 
@@ -844,7 +844,8 @@ export class GameRoomDurableObject {
         case "set_seat":
           if (this.room.getState().status !== "waiting") throw new Error("Seats can only be changed before the game starts");
           if (!this.room.getState().players.some(p => p.id === userId)) throw new Error("You are not a player");
-          this.room.setPlayerSeat(action.playerId, action.seat);
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+           this.room.setPlayerSeat(userId, action.seat);
           break;
 
         case "remove_player":
@@ -954,7 +955,9 @@ export class GameRoomDurableObject {
 
         case "scala_recycle_discard":
           this.requireScalaGame();
-          this.scalaGame = scalaRecycleDiscard(this.scalaGame);
+          if (!this.scalaGame.players.some(player => player.id === userId)) throw new Error("You are not a player");
+           if (this.scalaGame.turnPlayerId !== userId) throw new Error("It is not your turn");
+           this.scalaGame = scalaRecycleDiscard(this.scalaGame);
           break;
 
         case "scala_lay_melds":
@@ -1251,7 +1254,8 @@ async function createBotRoom(env: Env, roomId: string, hostId: string, hostName:
 
 async function handleTelegramWebhook(request: Request, env: Env) {
   const secret = env.TELEGRAM_WEBHOOK_SECRET;
-  if (secret && request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!secret) return Response.json({ error: "Webhook secret is not configured" }, { status: 503 });
+  if (request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const update = await request.json() as BotUpdate;
   const me = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getMe", {});
   const username = me?.result?.username as string | undefined;
@@ -1399,7 +1403,7 @@ export default {
       catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Webhook error" }, { status: 500 }); }
     }
     if (url.pathname === "/admin/migrate-per-game-rankings" && (request.method === "GET" || request.method === "POST")) {
-      const migrationSecret = new URL(request.url).searchParams.get("secret") || request.headers.get("x-migration-secret");
+      const migrationSecret = request.headers.get("x-migration-secret");
       if (!env.TELEGRAM_WEBHOOK_SECRET || migrationSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
