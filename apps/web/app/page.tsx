@@ -15,7 +15,6 @@ import {
 export default function Home() {
   const [hokmMode, setHokmMode] = useState(4);
   const [scalaMode, setScalaMode] = useState(4);
-  const [selectedGame, setSelectedGame] = useState<"hokm" | "scala_quaranta">("hokm");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [user, setUser] = useState<ReturnType<typeof telegramUser>>(null);
@@ -29,7 +28,6 @@ export default function Home() {
 
     const currentUser = telegramUser();
     const gameParam = new URLSearchParams(window.location.search).get("game");
-    if (gameParam === "scala_quaranta") setSelectedGame("scala_quaranta");
     const startParam = telegramStartParam();
     if (startParam === "games") {
       router.replace("/games");
@@ -204,14 +202,12 @@ export default function Home() {
       </section>
 
       <section>
-        <div className="section-title"><h2>بازی‌ها</h2><span>۲ بازی</span></div>
-        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={() => createRoom("hokm")} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setSelectedGame("scala_quaranta"); setScalaMode(value); }} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
+        <div className="section-title"><h2>بازی‌ها</h2><span>۱۱ بازی</span></div>
+        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={() => createRoom("hokm")} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setScalaMode(value); }} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
       </section>
 
       {creating && !groupLaunch && <div className="mode-hint">در حال ساخت اتاق...</div>}
       {error && <div className="error">{error}</div>}
-      <div className="mode-hint">حالت انتخاب‌شده: <strong>حکم {hokmMode} نفره</strong></div>
-
       <section className="stats"><div><b>{profileStats?.gamesPlayed ?? 0}</b><span>بازی</span></div><div><b>{profileStats?.wins ?? 0}</b><span>برد</span></div><div><b>{profileStats?.rating ?? 1000}</b><span>امتیاز</span></div></section>
 
       <nav className="bottom-nav">
