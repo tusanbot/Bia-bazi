@@ -551,9 +551,13 @@ export class GameRoomDurableObject {
 
     if (this.miniGame) {
       const game = structuredClone(this.miniGame);
-      if (game.gameId === "spy") {
-        if (game.phase !== "finished" && game.spyId !== viewerId) delete game.spyId;
-        if (game.phase !== "finished" && game.spyId !== viewerId) delete game.location;
+      if (game.gameId === "spy" && game.phase !== "finished") {
+        // Everyone except the spy sees the location. Only the spy identity is hidden.
+        if (game.spyId === viewerId) {
+          delete game.location;
+        } else {
+          delete game.spyId;
+        }
       }
       if (game.gameId === "battleship") {
         const boards = game.boards as Record<string, unknown[]>;
