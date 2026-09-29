@@ -913,7 +913,7 @@ export class GameRoomDurableObject {
         return Response.json({ room: this.room.getState(), game: null });
       }
 
-      if (request.method === "POST" && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
+      if ((request.method === "POST" || request.method === "GET") && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
         const internalUrl = new URL(request.url);
         if (internalUrl.pathname === "/telegram-bind") {
           const body = await request.json() as { chatId?: string; messageId?: number };
