@@ -487,14 +487,16 @@ export class GameRoomDurableObject {
       if(!user) continue;
       const exists=await this.env.DB.prepare("SELECT id FROM game_results WHERE room_id=? AND telegram_id=? LIMIT 1").bind(roomId,telegramId).first();
       if(exists) continue;
-      const won=(game.winnerIds||[]).includes(item.player.id);
-      const ratingDelta=won?10:-5;
+      const winners=game.winnerIds||[];
+      const draw=winners.length===0;
+      const won=winners.includes(item.player.id);
+      const ratingDelta=draw?0:won?10:-5;
       await this.env.DB.prepare("INSERT INTO game_results (room_id, telegram_id, game_id, placement, score_delta, rating_delta) VALUES (?,?,?,?,?,?)")
         .bind(roomId,telegramId,game.gameId,i+1,item.score,ratingDelta).run();
-      await this.env.DB.prepare("UPDATE player_stats SET rating=rating+?, games_played=games_played+1, wins=wins+?, losses=losses+?, current_streak=CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END, best_streak=MAX(best_streak, CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END), updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
-        .bind(ratingDelta,won?1:0,won?0:1,won?1:0,won?1:0,user.id).run();
+      await this.env.DB.prepare("UPDATE player_stats SET rating=rating+?, games_played=games_played+1, wins=wins+?, losses=losses+?, draws=draws+?, current_streak=CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END, best_streak=MAX(best_streak, CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END), updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
+        .bind(ratingDelta,won?1:0,draw?0:won?0:1,draw?1:0,won?1:0,won?1:0,user.id).run();
       await this.env.DB.prepare("INSERT INTO player_game_stats (user_id,game_type,rating,games_played,wins,losses,draws,current_streak,best_streak) VALUES (?,?,?,1,?,?,0,?,?) ON CONFLICT(user_id,game_type) DO UPDATE SET rating=rating+excluded.rating-1000,games_played=games_played+1,wins=wins+excluded.wins,losses=losses+excluded.losses,current_streak=CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END,best_streak=MAX(best_streak,CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END),updated_at=CURRENT_TIMESTAMP")
-        .bind(user.id,game.gameId,1000+ratingDelta,won?1:0,won?0:1,won?1:0,won?1:0).run();
+        .bind(user.id,game.gameId,1000+ratingDelta,won?1:0,draw?0:won?0:1,draw?1:0,won?1:0,won?1:0).run();
     }
   }
 
