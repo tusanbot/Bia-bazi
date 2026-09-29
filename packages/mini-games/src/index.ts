@@ -181,6 +181,7 @@ export function createMiniGame(gameId: MiniGameId, inputPlayers: MiniPlayer[], r
       location,
       spyId,
       questionIndex: 0,
+      maxQuestions: 20,
       questions: [],
       turnPlayerId: players[0].id,
       lastQuestionerId: undefined
@@ -298,6 +299,12 @@ function spy(s: MiniGameState, a: MiniAction, p: string) {
     s.questions.push({ from: p, text, at: Date.now() });
     s.questionIndex = Number(s.questionIndex || 0) + 1;
     s.lastQuestionerId = p;
+    if (s.questionIndex >= Number(s.maxQuestions || 20)) {
+      s.phase = "finished";
+      s.winnerIds = [s.spyId];
+      s.scores[s.spyId] += 2;
+      return s;
+    }
     s.turnPlayerId = nextPlayer(s, p);
     return s;
   }
