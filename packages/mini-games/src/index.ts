@@ -674,6 +674,12 @@ export function applyMiniAction(state: MiniGameState, action: MiniAction, player
   const s = structuredClone(state) as MiniGameState;
   if (!s.players.some(p => p.id === playerId)) throw new Error("بازیکن در اتاق نیست");
   if (s.phase === "finished") throw new Error("بازی تمام شده است");
+  if (action.type === "surrender") {
+    s.phase = "finished";
+    s.winnerIds = s.players.filter(player => player.id !== playerId).map(player => player.id);
+    s.winnerIds.forEach(id => { s.scores[id] += 1; });
+    return s;
+  }
   switch (s.gameId) {
     case "tic_tac_toe": return ticTacToe(s, action, playerId);
     case "rock_paper_scissors": return rps(s, action, playerId);
