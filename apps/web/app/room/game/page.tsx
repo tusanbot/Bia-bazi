@@ -143,9 +143,26 @@ export default function HokmGamePage() {
 
   useEffect(() => {
     if (!ready || !roomId) return;
-    refresh().catch(e => setError(e.message));
-    const timer = setInterval(() => refresh().catch(e => setError(e.message)), 1200);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      if (stopped) return;
+      if (!document.hidden) {
+        try {
+          await refresh();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "خطا در دریافت بازی");
+        }
+      }
+      if (!stopped) timer = window.setTimeout(poll, document.hidden ? 5000 : 1200);
+    };
+
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [refresh]);
 
   async function act(body: object) {
