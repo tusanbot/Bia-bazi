@@ -12,6 +12,8 @@
     "build:web": "npm --workspace apps/web run build",
     "typecheck": "tsc --noEmit",
     "build:bia-bazi": "npm --workspace apps/web run build",
-    "deploy:bia-bazi": "npm --workspace apps/web run build && npm --workspace workers/game-room run deploy"
+    "deploy:bia-bazi": "npm --workspace apps/web run build && npm --workspace workers/game-room run deploy",
+    "migrate:remote": "wrangler d1 migrations apply bia-bazi --remote --config workers/game-room/wrangler.toml",
+    "migrate:list": "wrangler d1 migrations list bia-bazi --remote --config workers/game-room/wrangler.toml"
   }
 }
