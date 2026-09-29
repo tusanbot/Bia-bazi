@@ -70,7 +70,15 @@ function winLine(b:any[]){const lines=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[
 export function applyMiniAction(state:MiniGameState, action:MiniAction, playerId:string, rng=Math.random):MiniGameState {
   const s=structuredClone(state) as MiniGameState;
   if(!s.players.some(p=>p.id===playerId)) throw new Error("بازیکن در اتاق نیست");
-  if(s.phase==="finished") throw new Error("بازی تمام شده است");\n  if(action.type==="surrender"){const others=s.players.filter(p=>p.id!==playerId).map(p=>p.id);s.phase="finished";s.winnerIds=others;s.surrenderedId=playerId;others.forEach(id=>s.scores[id]++);return s;}
+  if(s.phase==="finished") throw new Error("بازی تمام شده است");
+  if(action.type==="surrender"){
+    const others=s.players.filter(p=>p.id!==playerId).map(p=>p.id);
+    s.phase="finished";
+    s.winnerIds=others;
+    s.surrenderedId=playerId;
+    others.forEach(id=>s.scores[id]++);
+    return s;
+  }
   if(s.gameId==="tic_tac_toe") return ticTacToe(s,action,playerId);
   if(s.gameId==="rock_paper_scissors") return rps(s,action,playerId);
   if(s.gameId==="truth_or_dare") return truthDare(s,action,playerId);
