@@ -921,6 +921,14 @@ export class GameRoomDurableObject {
           break;
         }
 
+        case "surrender":
+          if (action.playerId !== userId) throw new Error("Invalid player identity");
+          if (this.game) { this.game.phase = "game_finished"; this.game.winnerIds = this.game.players.filter(p => p.id !== userId).map(p => p.id); this.room.finish(); await this.persistRoom(); await this.persistGameResult(); }
+          else if (this.scalaGame) { this.scalaGame.phase = "match_finished"; this.scalaGame.roundWinnerId = this.scalaGame.players.find(p => p.id !== userId)?.id; this.room.finish(); await this.persistRoom(); await this.persistScalaGameResult(); }
+          else if (this.miniGame) { this.miniGame = applyMiniAction(this.miniGame, { type: "surrender" }, userId); this.room.finish(); await this.persistRoom(); await this.persistMiniGameResult(this.miniGame); }
+          else throw new Error("Game state is unavailable");
+          break;
+
         case "mini_action":
           if (!this.miniGame) throw new Error("Mini game state is unavailable");
           if (action.playerId !== userId) throw new Error("Invalid player identity");
