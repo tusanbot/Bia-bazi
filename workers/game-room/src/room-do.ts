@@ -1891,13 +1891,37 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/__bia_test_92eaa2cb" && request.method === "GET") {
+      return new Response(JSON.stringify({
+        ok: true,
+        worker: "bia-bazi",
+        version: "92eaa2cb",
+        mode: "worker-first",
+        path: url.pathname
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "x-bia-bazi-version": "92eaa2cb"
+        }
+      });
+    }
+
     if (url.pathname === "/__version" && request.method === "GET") {
-      return Response.json({
+      return new Response(JSON.stringify({
         app: "bia-bazi",
         worker: "game-room",
         version: "telegram-hokm-inline-2026-09-29-v2",
         migrationEndpoint: "/admin/migrate-per-game-rankings",
         source: "github:tusanbot/Bia-bazi"
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "x-bia-bazi-version": "92eaa2cb"
+        }
       });
     }
 
