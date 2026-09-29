@@ -1734,7 +1734,7 @@ export default {
             });
             const data=await result.json();
             if (!result.ok) return Response.json(data,{status:result.status});
-            await env.DB.prepare("UPDATE game_rooms SET status=?, cancelled_at=CASE WHEN ?='cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END WHERE id=?").bind(body.type==="room_cancel"?"cancelled":"finished",body.type==="room_cancel"?"cancelled":"finished",body.roomId).run();
+            await env.DB.prepare("UPDATE game_rooms SET status=?, cancelled_at=CASE WHEN ?='cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END WHERE id=?").bind(body.type==="room_cancel"?"cancelled":"closed",body.type==="room_cancel"?"cancelled":"closed",body.roomId).run();
             return Response.json({ok:true,room:data});
           }
           if (body.type === "room_delete") {
