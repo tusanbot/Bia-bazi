@@ -38,6 +38,10 @@ export interface Env {
   ASSETS: Fetcher;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
+  ADMIN_USERNAME?: string;
+  ADMIN_PASSWORD?: string;
+  ADMIN_SESSION_SECRET?: string;
+  ADMIN_INTERNAL_TOKEN?: string;
   DB?: D1Database;
 }
 
@@ -137,6 +141,85 @@ type Action =
   | { type: "send_message"; text: string; initData: string }
   | { type: "list_rooms"; initData: string }
   | { type: "mini_action"; action: Record<string, unknown>; playerId: string; initData: string };
+
+function base64UrlEncode(value: string) {
+  return btoa(unescape(encodeURIComponent(value))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  return decodeURIComponent(escape(atob(padded)));
+}
+
+async function hmacHex(secret: string, value: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function createAdminSession(env: Env) {
+  const secret = env.ADMIN_SESSION_SECRET?.trim();
+  if (!secret) throw new Error("ADMIN_SESSION_SECRET is not configured");
+  const payload = JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 });
+  const encoded = base64UrlEncode(payload);
+  const signature = await hmacHex(secret, encoded);
+  return encoded + "." + signature;
+}
+
+async function verifyAdminSession(request: Request, env: Env) {
+  const secret = env.ADMIN_SESSION_SECRET?.trim();
+  if (!secret) return false;
+  const cookie = request.headers.get("Cookie") || "";
+  const match = cookie.match(/(?:^|;\\s*)bia_admin=([^;]+)/);
+  if (!match) return false;
+  const parts = match[1].split(".");
+  if (parts.length !== 2) return false;
+  const expected = await hmacHex(secret, parts[0]);
+  if (!constantTimeEqual(expected, parts[1])) return false;
+  try {
+    const payload = JSON.parse(base64UrlDecode(parts[0])) as { exp?: number };
+    return Boolean(payload.exp && payload.exp > Math.floor(Date.now() / 1000));
+  } catch {
+    return false;
+  }
+}
+
+async function requireAdmin(request: Request, env: Env) {
+  if (!(await verifyAdminSession(request, env))) {
+    throw new Error("ADMIN_UNAUTHORIZED");
+  }
+}
+
+function adminCookie(value: string, maxAge: number) {
+  return `bia_admin=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+
+async function upsertBotGroup(env: Env, chat: { id: number; title?: string; username?: string; type?: string }, botStatus?: string) {
+  if (!env.DB || !["group", "supergroup"].includes(chat.type || "")) return;
+  let memberCount: number | null = null;
+  try {
+    const response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getChatMemberCount", { chat_id: chat.id });
+    if (response?.ok && typeof response.result === "number") memberCount = response.result;
+  } catch {}
+  await env.DB.prepare(
+    "INSERT INTO bot_groups (chat_id,title,username,type,member_count,bot_status,last_seen_at,updated_at) VALUES (?,?,?,?,?,COALESCE(?, 'member'),CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET title=COALESCE(excluded.title,bot_groups.title),username=COALESCE(excluded.username,bot_groups.username),type=excluded.type,member_count=COALESCE(excluded.member_count,bot_groups.member_count),bot_status=COALESCE(excluded.bot_status,bot_groups.bot_status),last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP"
+  ).bind(chat.id, chat.title ?? null, chat.username ?? null, chat.type || "supergroup", memberCount, botStatus ?? null).run();
+}
+
+async function trackGroupMember(env: Env, chatId: number, user?: { id: number; first_name?: string; last_name?: string; username?: string }, status = "seen") {
+  if (!env.DB || !user?.id) return;
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "کاربر";
+  await env.DB.prepare(
+    "INSERT INTO group_members(chat_id,telegram_id,display_name,username,status,last_seen_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(chat_id,telegram_id) DO UPDATE SET display_name=excluded.display_name,username=excluded.username,status=excluded.status,last_seen_at=CURRENT_TIMESTAMP"
+  ).bind(chatId, user.id, name, user.username ?? null, status).run();
+}
+
+async function isGroupBlocked(env: Env, chatId: number) {
+  if (!env.DB) return false;
+  const row = await env.DB.prepare("SELECT blocked FROM bot_groups WHERE chat_id=? LIMIT 1").bind(chatId).first<{ blocked: number }>();
+  return row?.blocked === 1;
+}
 
 function displayName(user: TelegramUser) {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن";
@@ -440,9 +523,11 @@ export class GameRoomDurableObject {
     if (!this.env.DB || !this.room) return;
     const state = this.room.getState();
     const creator = Number(state.players.find(p => p.id === state.hostId)?.id ?? 0);
+    const groupMatch = /^group-(-?\\d+)-/.exec(state.id);
+    const groupChatId = groupMatch ? Number(groupMatch[1]) : null;
     await this.env.DB.prepare(
-      "INSERT INTO game_rooms (id, game_type, status, creator_telegram_id, max_players, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, datetime(?, 'unixepoch'), ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, max_players = excluded.max_players, started_at = COALESCE(game_rooms.started_at, excluded.started_at), finished_at = excluded.finished_at"
-    ).bind(state.id, state.config.gameId, state.status, creator, state.config.playerCount, Math.floor(state.createdAt / 1000), state.status === "playing" ? new Date().toISOString() : null, state.status === "finished" ? new Date().toISOString() : null).run();
+      "INSERT INTO game_rooms (id, game_type, status, group_chat_id, creator_telegram_id, max_players, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, group_chat_id = COALESCE(excluded.group_chat_id, game_rooms.group_chat_id), max_players = excluded.max_players, started_at = COALESCE(game_rooms.started_at, excluded.started_at), finished_at = excluded.finished_at"
+    ).bind(state.id, state.config.gameId, state.status, groupChatId, creator, state.config.playerCount, Math.floor(state.createdAt / 1000), state.status === "playing" ? new Date().toISOString() : null, state.status === "finished" ? new Date().toISOString() : null).run();
     for (const player of state.players) {
       await this.env.DB.prepare(
         "INSERT INTO game_players (room_id, telegram_id, seat, status) VALUES (?, ?, ?, 'active') ON CONFLICT(room_id, telegram_id) DO UPDATE SET seat = excluded.seat, status = 'active'"
@@ -496,7 +581,7 @@ export class GameRoomDurableObject {
       await this.env.DB.prepare("UPDATE player_stats SET rating=rating+?, games_played=games_played+1, wins=wins+?, losses=losses+?, draws=draws+?, current_streak=CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END, best_streak=MAX(best_streak, CASE WHEN ?=1 THEN current_streak+1 ELSE 0 END), updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
         .bind(ratingDelta,won?1:0,draw?0:won?0:1,draw?1:0,won?1:0,won?1:0,user.id).run();
       await this.env.DB.prepare("INSERT INTO player_game_stats (user_id,game_type,rating,games_played,wins,losses,draws,current_streak,best_streak) VALUES (?,?,?,1,?,?,0,?,?) ON CONFLICT(user_id,game_type) DO UPDATE SET rating=rating+excluded.rating-1000,games_played=games_played+1,wins=wins+excluded.wins,losses=losses+excluded.losses,current_streak=CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END,best_streak=MAX(best_streak,CASE WHEN excluded.wins=1 THEN current_streak+1 ELSE 0 END),updated_at=CURRENT_TIMESTAMP")
-        .bind(user.id,game.gameId,1000+ratingDelta,won?1:0,draw?0:won?0:1,draw?1:0,won?1:0,won?1:0).run();
+        .bind(user.id,game.gameId,1000+ratingDelta,won?1:0,draw?0:won?0:1,won?1:0,won?1:0).run();
     }
   }
 
@@ -506,7 +591,7 @@ export class GameRoomDurableObject {
       const state = this.room.getState();
       const registryId = this.env.GAME_ROOM.idFromName("__room_registry__");
       const registry = this.env.GAME_ROOM.get(registryId);
-          const payload: ActiveRoom | null = ["waiting", "playing", "finished"].includes(state.status)
+          const payload: ActiveRoom | null = ["waiting", "playing"].includes(state.status)
         ? {
             id: state.id,
             gameId: state.config.gameId,
@@ -610,6 +695,30 @@ export class GameRoomDurableObject {
       }
 
       const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
+
+      if (request.headers.get("x-admin-internal-token") && request.headers.get("x-admin-internal-token") === (this.env.ADMIN_INTERNAL_TOKEN || this.env.ADMIN_SESSION_SECRET)) {
+        const adminUrl = new URL(request.url);
+        if (adminUrl.pathname === "/admin-room" && request.method === "POST") {
+          const body = await request.json() as { type?: string };
+          await this.load();
+          if (!this.room) return Response.json({ error: "Room does not exist" }, { status: 404 });
+          if (body.type === "cancel") this.room.cancel();
+          else if (body.type === "close") this.room.close();
+          else if (body.type === "delete") {
+            await this.syncRegistry();
+            await this.state.storage.deleteAll();
+            this.room = undefined;
+            this.game = undefined;
+            this.scalaGame = undefined;
+            this.miniGame = undefined;
+            return Response.json({ ok: true, deleted: true });
+          } else return Response.json({ error: "Unknown admin room action" }, { status: 400 });
+          await this.persistRoom();
+          await this.save();
+          await this.syncRegistry();
+          return Response.json({ ok: true, room: this.room.getState() });
+        }
+      }
 
       const isRegistryRequest =
         request.headers.get("x-room-registry-request") === "1" ||
@@ -1229,6 +1338,10 @@ export class GameRoomDurableObject {
 
 
 type BotUpdate = {
+  my_chat_member?: {
+    chat: { id: number; type: string; title?: string; username?: string };
+    new_chat_member?: { status?: string; user?: { id: number; first_name?: string; last_name?: string; username?: string } };
+  };
   message?: { chat: { id: number; type: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string }; text?: string };
   inline_query?: { id: string; from: { id: number; first_name?: string; last_name?: string; username?: string }; query: string; chat_type?: string };
 };
@@ -1264,6 +1377,12 @@ async function handleTelegramWebhook(request: Request, env: Env) {
   const me = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getMe", {});
   const username = me?.result?.username as string | undefined;
   if (!username) throw new Error("Bot username unavailable");
+
+  if (update.my_chat_member) {
+    const change = update.my_chat_member;
+    await upsertBotGroup(env, change.chat, change.new_chat_member?.status || "member");
+    return Response.json({ ok: true });
+  }
 
   if (update.inline_query) {
     const q = update.inline_query;
@@ -1363,6 +1482,11 @@ async function handleTelegramWebhook(request: Request, env: Env) {
 
   const groupMessage = update.message;
   if (groupMessage?.text && groupMessage.from && (groupMessage.chat.type === "group" || groupMessage.chat.type === "supergroup")) {
+    await upsertBotGroup(env, groupMessage.chat as {id:number;title?:string;username?:string;type?:string}, "member");
+    await trackGroupMember(env, groupMessage.chat.id, groupMessage.from);
+    if (await isGroupBlocked(env, groupMessage.chat.id)) {
+      return Response.json({ ok: true, blocked: true });
+    }
     const command = groupMessage.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
     if (command === "/hokm") {
       const room = await createBotRoom(env, `group-${groupMessage.chat.id}-hokm4`, String(groupMessage.from.id), botUserName(groupMessage.from), String(groupMessage.chat.id));
@@ -1515,10 +1639,155 @@ export default {
         { command: "help", description: "راهنمای استفاده از بیا بازی" }
       ];
       const [webhook, commandResult] = await Promise.all([
-        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setWebhook", { url: webhookUrl, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "inline_query"] }),
+        telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setWebhook", { url: webhookUrl, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "inline_query", "my_chat_member"] }),
         telegramBotApi(env.TELEGRAM_BOT_TOKEN, "setMyCommands", { commands })
       ]);
       return Response.json({ ok: Boolean(webhook?.ok && commandResult?.ok), webhook, commands: commandResult });
+    }
+
+    if (url.pathname.startsWith("/admin/api/")) {
+      try {
+        if (url.pathname === "/admin/api/login" && request.method === "POST") {
+          const body = await request.json() as { username?: string; password?: string };
+          if (!env.ADMIN_USERNAME || !env.ADMIN_PASSWORD || !env.ADMIN_SESSION_SECRET) {
+            return Response.json({ error: "Admin authentication is not configured" }, { status: 503 });
+          }
+          if (body.username !== env.ADMIN_USERNAME || body.password !== env.ADMIN_PASSWORD) {
+            return Response.json({ error: "نام کاربری یا رمز عبور نادرست است" }, { status: 401 });
+          }
+          const session = await createAdminSession(env);
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json", "set-cookie": adminCookie(session, 60 * 60 * 12) }
+          });
+        }
+
+        if (url.pathname === "/admin/api/logout" && request.method === "POST") {
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json", "set-cookie": adminCookie("", 0) }
+          });
+        }
+
+        await requireAdmin(request, env);
+        if (!env.DB) return Response.json({ error: "D1 database is not configured" }, { status: 500 });
+
+        if (url.pathname === "/admin/api/me") return Response.json({ ok: true });
+
+        if (url.pathname === "/admin/api/dashboard") {
+          const [users, activeUsers, activeRooms, finishedGames, groups, blockedGroups] = await Promise.all([
+            env.DB.prepare("SELECT COUNT(*) AS count FROM users").first<{count:number}>(),
+            env.DB.prepare("SELECT COUNT(*) AS count FROM users WHERE updated_at >= datetime('now','-30 day')").first<{count:number}>(),
+            env.DB.prepare("SELECT COUNT(*) AS count FROM game_rooms WHERE status IN ('waiting','playing') AND deleted_at IS NULL").first<{count:number}>(),
+            env.DB.prepare("SELECT COUNT(DISTINCT room_id) AS count FROM game_results").first<{count:number}>(),
+            env.DB.prepare("SELECT COUNT(*) AS count FROM bot_groups").first<{count:number}>(),
+            env.DB.prepare("SELECT COUNT(*) AS count FROM bot_groups WHERE blocked=1").first<{count:number}>()
+          ]);
+          return Response.json({
+            users: users?.count ?? 0,
+            activeUsers: activeUsers?.count ?? 0,
+            activeRooms: activeRooms?.count ?? 0,
+            finishedGames: finishedGames?.count ?? 0,
+            groups: groups?.count ?? 0,
+            blockedGroups: blockedGroups?.count ?? 0
+          });
+        }
+
+        if (url.pathname === "/admin/api/rooms" && request.method === "GET") {
+          const q = (url.searchParams.get("q") || "").trim();
+          const pattern = `%${q}%`;
+          const rows = await env.DB.prepare(
+            "SELECT r.id,r.game_type AS gameId,r.status,r.creator_telegram_id AS hostId,r.max_players AS maxPlayers,r.created_at AS createdAt,r.started_at AS startedAt,r.finished_at AS finishedAt,r.group_chat_id AS groupChatId,COALESCE(NULLIF(TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')),''),u.username,'میزبان') AS hostName,(SELECT COUNT(*) FROM game_players gp WHERE gp.room_id=r.id AND gp.status='active') AS currentPlayers FROM game_rooms r LEFT JOIN users u ON u.telegram_id=r.creator_telegram_id WHERE r.deleted_at IS NULL AND r.status IN ('waiting','playing') AND (?='' OR r.id LIKE ? OR r.game_type LIKE ? OR CAST(r.creator_telegram_id AS TEXT) LIKE ? OR COALESCE(u.username,'') LIKE ? OR COALESCE(u.first_name,'') LIKE ? OR COALESCE(u.last_name,'') LIKE ?) ORDER BY r.created_at DESC LIMIT 200"
+          ).bind(q,pattern,pattern,pattern,pattern,pattern,pattern).all();
+          return Response.json({ rooms: rows.results || [] });
+        }
+
+        if (url.pathname === "/admin/api/users" && request.method === "GET") {
+          const q=(url.searchParams.get("q")||"").trim(), pattern=`%${q}%`;
+          const rows=await env.DB.prepare(
+            "SELECT u.telegram_id AS id,u.username,u.first_name AS firstName,u.last_name AS lastName,u.updated_at AS lastSeen,s.rating,s.games_played AS gamesPlayed,s.wins,s.losses,s.draws FROM users u LEFT JOIN player_stats s ON s.user_id=u.id WHERE (?='' OR CAST(u.telegram_id AS TEXT) LIKE ? OR COALESCE(u.username,'') LIKE ? OR COALESCE(u.first_name,'') LIKE ? OR COALESCE(u.last_name,'') LIKE ?) ORDER BY u.updated_at DESC LIMIT 300"
+          ).bind(q,pattern,pattern,pattern,pattern).all();
+          return Response.json({ users: rows.results || [] });
+        }
+
+        if (url.pathname === "/admin/api/groups" && request.method === "GET") {
+          const groups=await env.DB.prepare(
+            "SELECT g.chat_id AS chatId,g.title,g.username,g.type,g.member_count AS memberCount,g.blocked,g.bot_status AS botStatus,g.updated_at AS updatedAt,(SELECT COUNT(*) FROM game_rooms r WHERE r.group_chat_id=g.chat_id AND r.deleted_at IS NULL AND r.status='finished') AS gamesPlayed,(SELECT COUNT(*) FROM game_rooms r WHERE r.group_chat_id=g.chat_id AND r.deleted_at IS NULL AND r.status IN ('waiting','playing')) AS activeRooms,(SELECT COUNT(*) FROM group_members gm WHERE gm.chat_id=g.chat_id AND gm.last_seen_at >= datetime('now','-30 day')) AS activeMembers FROM bot_groups g ORDER BY g.updated_at DESC LIMIT 300"
+          ).all();
+          return Response.json({ groups: groups.results || [] });
+        }
+
+        if (url.pathname === "/admin/api/games" && request.method === "GET") {
+          const rows=await env.DB.prepare(
+            "SELECT game_type AS gameId,COUNT(DISTINCT room_id) AS gamesPlayed,COUNT(*) AS resultRows,MAX(created_at) AS lastPlayed FROM game_results GROUP BY game_type ORDER BY gamesPlayed DESC"
+          ).all();
+          return Response.json({ games: rows.results || [] });
+        }
+
+        if (url.pathname === "/admin/api/action" && request.method === "POST") {
+          const body=await request.json() as { type:string; roomId?:string; chatId?:number|string; userId?:number|string; text?:string };
+          if (body.type === "room_cancel" || body.type === "room_close") {
+            if (!body.roomId) throw new Error("roomId is required");
+            const id=env.GAME_ROOM.idFromName(body.roomId);
+            const result=await env.GAME_ROOM.get(id).fetch("https://internal/admin-room", {
+              method:"POST",
+              headers:{"x-admin-internal-token":env.ADMIN_INTERNAL_TOKEN || env.ADMIN_SESSION_SECRET || "", "content-type":"application/json"},
+              body:JSON.stringify({ type:body.type === "room_cancel" ? "cancel" : "close" })
+            });
+            const data=await result.json();
+            if (!result.ok) return Response.json(data,{status:result.status});
+            await env.DB.prepare("UPDATE game_rooms SET status=?, cancelled_at=CASE WHEN ?='cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END WHERE id=?").bind(body.type==="room_cancel"?"cancelled":"finished",body.type==="room_cancel"?"cancelled":"finished",body.roomId).run();
+            return Response.json({ok:true,room:data});
+          }
+          if (body.type === "room_delete") {
+            if (!body.roomId) throw new Error("roomId is required");
+            const id=env.GAME_ROOM.idFromName(body.roomId);
+            const result=await env.GAME_ROOM.get(id).fetch("https://internal/admin-room", {
+              method:"POST",
+              headers:{"x-admin-internal-token":env.ADMIN_INTERNAL_TOKEN || env.ADMIN_SESSION_SECRET || "", "content-type":"application/json"},
+              body:JSON.stringify({ type:"delete" })
+            });
+            if (!result.ok) return Response.json(await result.json(),{status:result.status});
+            await env.DB.prepare("DELETE FROM game_results WHERE room_id=?").bind(body.roomId).run();
+            await env.DB.prepare("DELETE FROM game_players WHERE room_id=?").bind(body.roomId).run();
+            await env.DB.prepare("DELETE FROM game_rooms WHERE id=?").bind(body.roomId).run();
+            return Response.json({ok:true});
+          }
+          if (body.type === "group_refresh") {
+            if (body.chatId === undefined) throw new Error("chatId is required");
+            const chat=await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"getChat",{chat_id:body.chatId});
+            if (!chat?.ok) return Response.json({error:chat?.description||"Telegram getChat failed"},{status:400});
+            const count=await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"getChatMemberCount",{chat_id:body.chatId});
+            await upsertBotGroup(env,chat.result,count?.ok?undefined:undefined);
+            return Response.json({ok:true,chat:chat.result,memberCount:count?.result??null});
+          }
+          if (body.type === "group_block" || body.type === "group_unblock") {
+            if (body.chatId === undefined) throw new Error("chatId is required");
+            await env.DB.prepare("UPDATE bot_groups SET blocked=?,updated_at=CURRENT_TIMESTAMP WHERE chat_id=?").bind(body.type==="group_block"?1:0,body.chatId).run();
+            return Response.json({ok:true});
+          }
+          if (body.type === "group_leave") {
+            if (body.chatId === undefined) throw new Error("chatId is required");
+            const api=await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"leaveChat",{chat_id:body.chatId});
+            if (!api?.ok) return Response.json({error:api?.description||"leaveChat failed"},{status:400});
+            await env.DB.prepare("UPDATE bot_groups SET bot_status='left',updated_at=CURRENT_TIMESTAMP WHERE chat_id=?").bind(body.chatId).run();
+            return Response.json({ok:true});
+          }
+          if (body.type === "group_message" || body.type === "user_message") {
+            const text=String(body.text||"").trim();
+            if (!text || text.length>4096) throw new Error("text is required and must be <= 4096 chars");
+            const target=body.type==="group_message"?body.chatId:body.userId;
+            if (target===undefined) throw new Error("target is required");
+            const api=await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"sendMessage",{chat_id:target,text,disable_web_page_preview:true});
+            if (!api?.ok) return Response.json({error:api?.description||"sendMessage failed"},{status:400});
+            return Response.json({ok:true,messageId:api.result?.message_id??null});
+          }
+          throw new Error("Unknown admin action");
+        }
+
+        return Response.json({ error: "Not found" }, { status: 404 });
+      } catch (error) {
+        if (error instanceof Error && error.message === "ADMIN_UNAUTHORIZED") return Response.json({ error: "Unauthorized" }, { status: 401 });
+        return Response.json({ error: error instanceof Error ? error.message : "Admin error" }, { status: 400 });
+      }
     }
 
     // The same Worker serves both the Mini App and the game backend.
