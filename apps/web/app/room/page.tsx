@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initTelegram, telegramUser } from "../../lib/telegram";
+import { initTelegram, telegramUser, waitForTelegram } from "../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type RoomPlayer = {
@@ -35,8 +35,14 @@ export default function RoomPage() {
   const [fromGame, setFromGame] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     initTelegram();
-    setUser(telegramUser());
+
+    void waitForTelegram().then(app => {
+      if (cancelled) return;
+      setUser(app?.initDataUnsafe?.user ?? telegramUser());
+    });
+
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
       window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
@@ -49,6 +55,10 @@ export default function RoomPage() {
     if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const playerId = user ? String(user.id) : "";
