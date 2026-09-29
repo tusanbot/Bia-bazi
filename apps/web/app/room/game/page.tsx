@@ -261,7 +261,8 @@ export default function HokmGamePage() {
         const tricks = currentGame.players.map(p => `${nameOf(p.id)}: ${hand.tricks[p.id] ?? 0}`).join(" | ");
         return `دست ${hand.hand}: ${hand.hokm ? suitNames[hand.hokm] : "بدون حکم"} · برنده: ${winnerNames} · امتیاز: ${points} · دست‌ها: ${tricks}`;
       });
-      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0} امتیاز · ${currentGame.tricksWon[p.id] ?? 0} دست`).join("\n");
+      const summary = ranking.map((p, i) => `${i + 1}. ${p.displayName} — ${currentGame.scores[p.id] ?? 0} امتیاز · ${currentGame.tricksWon[p.id] ?? 0} دست`).join("
+");
       const shareText = [
         "🏆 نتیجه نهایی «بیا بازی»",
         "━━━━━━━━━━━━━━",
@@ -278,7 +279,8 @@ export default function HokmGamePage() {
         "",
         "━━━━━━━━━━━━━━",
         "🎮 بیا بازی"
-      ].join("\n");
+      ].join("
+");
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(linkJson.url)}&text=${encodeURIComponent(shareText)}`;
       if (window.Telegram?.WebApp?.openTelegramLink) {
         window.Telegram.WebApp.openTelegramLink(shareUrl);
@@ -299,8 +301,10 @@ export default function HokmGamePage() {
 
   return (
     <main className="shell hokm-game">
-      <div className="game-navigation">\n        <Link className="secondary" href={`/games/${game.rules.variantId === "standard" || game.rules.variantId === "saras" || game.rules.variantId === "naras" || game.rules.variantId === "tak_bresh" ? "hokm" : "hokm"}/learn`}>آموزش</Link>
-        <button className="secondary" disabled={busy} onClick={() => router.replace(`/room?room=${encodeURIComponent(roomId)}&from=game`)}>بازگشت به اتاق</button>\n        {data.room.status === "playing" && game.phase !== "game_finished" && <button className="secondary danger" disabled={busy} onClick={() => act({ type: "surrender" })}>تسلیم شدن</button>}
+      <div className="game-navigation">
+        <Link className="secondary" href={`/games/${game.rules.variantId === "standard" || game.rules.variantId === "saras" || game.rules.variantId === "naras" || game.rules.variantId === "tak_bresh" ? "hokm" : "hokm"}/learn`}>آموزش</Link>
+        <button className="secondary" disabled={busy} onClick={() => router.replace(`/room?room=${encodeURIComponent(roomId)}&from=game`)}>بازگشت به اتاق</button>
+        {data.room.status === "playing" && game.phase !== "game_finished" && <button className="secondary danger" disabled={busy} onClick={() => act({ type: "surrender" })}>تسلیم شدن</button>}
         {isHost && data.room.status === "playing" && (
           <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
         )}
