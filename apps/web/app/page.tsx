@@ -27,17 +27,16 @@ export default function Home() {
     let cancelled = false;
     initTelegram();
 
-    const startParam = telegramStartParam();
     void waitForTelegram().then(app => {
       if (cancelled) return;
       const currentUser = app?.initDataUnsafe?.user ?? telegramUser();
+      const startParam = telegramStartParam();
+      const chatInstance = telegramChatInstance();
+      const chatType = telegramChatType();
     if (startParam === "games") {
       router.replace("/games");
       return;
     }
-    const chatInstance = telegramChatInstance();
-    const chatType = telegramChatType();
-
     setUser(currentUser);
 
     if (currentUser) {
