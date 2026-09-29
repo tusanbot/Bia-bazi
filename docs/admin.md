@@ -33,3 +33,16 @@
 Bot API تعداد کل اعضای گروه را با getChatMemberCount ارائه می‌کند، اما فهرست کامل اعضای گروه را در اختیار Bot API قرار نمی‌دهد. بنابراین «اعضای فعال» در پنل بر اساس کاربرانی محاسبه می‌شود که در webhookهای قابل مشاهده ربات ثبت شده‌اند، نه کل اعضای آنلاین گروه.
 
 برای دریافت رویداد اضافه/حذف شدن خود ربات، webhook با my_chat_member نیز ثبت می‌شود.
+## D1 Migration
+
+Migrationها اکنون به‌صورت رسمی توسط Wrangler از مسیر `workers/game-room/migrations` مدیریت می‌شوند و binding `DB` همین مسیر را در `wrangler.toml` دارد.
+
+برای بررسی وضعیت:
+
+    npm run migrate:list
+
+برای اجرای Migrationهای باقی‌مانده روی D1 اصلی:
+
+    npm run migrate:remote
+
+Migrationهای جدید دیگر نباید از SQLهای قدیمی `database/migrations` یا با کپی‌کردن مستقیم `ALTER TABLE ... ADD COLUMN` اجرا شوند. Worker نیز برای دیتابیس‌های قدیمی، ستون‌های ضروری اتاق و جدول‌های گروه را به‌صورت امن بررسی و در صورت نبودن ایجاد می‌کند.
