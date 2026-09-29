@@ -277,8 +277,7 @@ export default function HokmGamePage() {
         "",
         "━━━━━━━━━━━━━━",
         "🎮 بیا بازی"
-      ].join("
-");
+      ].join("\n");
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(linkJson.url)}&text=${encodeURIComponent(shareText)}`;
       if (window.Telegram?.WebApp?.openTelegramLink) {
         window.Telegram.WebApp.openTelegramLink(shareUrl);
