@@ -2343,7 +2343,7 @@ export default {
     // Objects reachable while the Next.js Web App is disabled. This prevents
     // the SPA fallback from masking an incorrect Worker deployment/route.
     // Re-enable the two ASSETS branches below after Telegram is verified.
-    const WEB_APP_ENABLED = false;
+    const WEB_APP_ENABLED = true;
 
     if (WEB_APP_ENABLED && (url.pathname === "/admin" || url.pathname === "/admin/")) {
       const adminUrl = new URL(request.url);
