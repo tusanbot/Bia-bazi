@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { initTelegram, telegramUser } from "../../../lib/telegram";
+import { initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
@@ -101,8 +101,12 @@ export default function HokmGamePage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     initTelegram();
-    setUser(telegramUser());
+    void waitForTelegram().then(app => {
+      if (cancelled) return;
+      setUser(app?.initDataUnsafe?.user ?? telegramUser());
+    });
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
       window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
@@ -114,6 +118,9 @@ export default function HokmGamePage() {
     if (room) window.localStorage.setItem("bia-bazi:last-room", room);
     setRoomId(room);
     setReady(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const playerId = user ? String(user.id) : "";
@@ -142,7 +149,7 @@ export default function HokmGamePage() {
   }, [fetchWithTimeout, roomId]);
 
   useEffect(() => {
-    if (!ready || !roomId) return;
+    if (!ready || !roomId || !user) return;
     let stopped = false;
     let timer: number | undefined;
 
