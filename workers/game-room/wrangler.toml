@@ -12,7 +12,6 @@ binding = "DB"
 database_name = "bia-bazi"
 database_id = "656a8f6e-baec-47ca-8f0b-6c43d390c0d4"
 migrations_dir = "migrations"
-migrations_dir = "migrations"
 
 [[migrations]]
 tag = "v1"
