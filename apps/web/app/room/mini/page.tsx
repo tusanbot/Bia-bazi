@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
+import { telegramInitData,\n  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 
 const names:Record<string,string>={haft_khabis:"هفت خبیث",chahar_barg:"۴ برگ",rock_paper_scissors:"سنگ کاغذ قیچی",shelem:"شلم",tic_tac_toe:"دوز",battleship:"کشتی جنگی",truth_or_dare:"جرأت حقیقت",spy:"جاسوس",backgammon:"نرد"};
 
@@ -11,9 +11,9 @@ export default function MiniRoomPage(){
  const router=useRouter(); const [user,setUser]=useState<any>(null); const [room,setRoom]=useState<any>(null); const [game,setGame]=useState<any>(null); const [error,setError]=useState(""); const [text,setText]=useState("");
  useEffect(()=>{let cancelled=false;initTelegram();void waitForTelegram().then(app=>{if(!cancelled)setUser(app?.initDataUnsafe?.user ?? telegramUser());});return()=>{cancelled=true;};},[]);
  const roomId=useMemo(()=>new URLSearchParams(typeof window==="undefined"?"":window.location.search).get("room")||"",[]);
- const refresh=useCallback(async()=>{if(!roomId)return;const initData=window.Telegram?.WebApp?.initData??"";const r=await fetch("/api/room?room="+encodeURIComponent(roomId),{cache:"no-store",headers:{"x-telegram-init-data":initData}});const j=await r.json();if(!r.ok)throw new Error(j.error||"خطا");setRoom(j.room);setGame(j.game);if(j.room.status!=="playing"&&j.room.status!=="finished")router.replace("/room?room="+encodeURIComponent(roomId));},[roomId,router]);
+ const refresh=useCallback(async()=>{if(!roomId)return;const initData=telegramInitData()??"";const r=await fetch("/api/room?room="+encodeURIComponent(roomId),{cache:"no-store",headers:{"x-telegram-init-data":initData}});const j=await r.json();if(!r.ok)throw new Error(j.error||"خطا");setRoom(j.room);setGame(j.game);if(j.room.status!=="playing"&&j.room.status!=="finished")router.replace("/room?room="+encodeURIComponent(roomId));},[roomId,router]);
  useEffect(()=>{if(!user||!roomId)return;let stopped=false;let timer:number|undefined;const poll=async()=>{if(stopped)return;if(!document.hidden){try{await refresh();}catch(e){setError(e instanceof Error?e.message:"خطا در دریافت بازی");}}if(!stopped)timer=window.setTimeout(poll,document.hidden?5000:1200);};void poll();return()=>{stopped=true;if(timer)window.clearTimeout(timer);};},[user,roomId,refresh]);
- async function act(action:any){setError("");try{const r=await fetch("/api/room?room="+encodeURIComponent(roomId),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:"mini_action",action,playerId:String(user.id),initData:window.Telegram?.WebApp?.initData??""})});const j=await r.json();if(!r.ok)throw new Error(j.error||"عملیات ناموفق");setRoom(j.room);setGame(j.game);}catch(e){setError(e instanceof Error?e.message:"خطا");}}
+ async function act(action:any){setError("");try{const r=await fetch("/api/room?room="+encodeURIComponent(roomId),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:"mini_action",action,playerId:String(user.id),initData:telegramInitData()??""})});const j=await r.json();if(!r.ok)throw new Error(j.error||"عملیات ناموفق");setRoom(j.room);setGame(j.game);}catch(e){setError(e instanceof Error?e.message:"خطا");}}
  if(!room||!game)return <main className="shell"><div className="room-panel">در حال بارگذاری بازی...</div>{error&&<p className="error">{error}</p>}</main>;
  const id=game.gameId, me=String(user.id), mine=game.hands?.[me]||[], top=game.discard?.at(-1);
  const players=room.players||[];
