@@ -27,3 +27,9 @@ enabled = true
 [vars]
 # Set with: wrangler secret put TELEGRAM_BOT_TOKEN
 # Set with: wrangler secret put TELEGRAM_WEBHOOK_SECRET
+# Admin panel credentials/session:
+# wrangler secret put ADMIN_USERNAME
+# wrangler secret put ADMIN_PASSWORD
+# wrangler secret put ADMIN_SESSION_SECRET
+# Optional internal token for Durable Object admin commands:
+# wrangler secret put ADMIN_INTERNAL_TOKEN
