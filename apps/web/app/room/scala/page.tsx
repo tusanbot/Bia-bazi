@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { telegramInitData,\n  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
+import { telegramInitData,
+  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 
 type Card = { id: string; suit?: "spades" | "hearts" | "diamonds" | "clubs"; rank?: number; joker: boolean };
 type Meld = { id: string; type: "set" | "run"; cards: Card[] };
