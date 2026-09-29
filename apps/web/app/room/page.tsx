@@ -265,7 +265,17 @@ export default function RoomPage() {
           <small>برای تغییر یار، صندلی خودتان را انتخاب کنید.</small>
         </div>
 
-        {!user && <p className="error">برای ورود به بازی، اتاق را از داخل تلگرام باز کنید.</p>}
+        {!user && (
+          <div className="error">
+            <strong>اتصال تلگرام برقرار نشد.</strong>
+            <p>این اتاق باید داخل Mini App تلگرام باز شود؛ باز کردن آدرس مستقیم سایت باعث نبودن initData می‌شود.</p>
+            {inviteLink && (
+              <a className="primary wide" href={inviteLink}>
+                باز کردن اتاق داخل تلگرام
+              </a>
+            )}
+          </div>
+        )}
 
         {user && !isJoined && room.status === "waiting" && (
           <button className="primary wide" disabled={busy} onClick={() => act({ type: "join", player: { id: playerId, displayName } })}>
