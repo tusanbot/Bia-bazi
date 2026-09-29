@@ -724,7 +724,7 @@ export class GameRoomDurableObject {
 
       if (action.type === "state") {
         const initData = request.headers.get("x-telegram-init-data") || "";
-        const telegramUser = await verifyTelegramInitData(initData, botToken);
+        const telegramUser = await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
         const viewerId = String(telegramUser.id);
 
         if (!this.room) throw new Error("Room does not exist");
