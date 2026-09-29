@@ -219,9 +219,30 @@ async function ensureOperationalSchema(env: Env) {
 
   const columns = await env.DB.prepare("PRAGMA table_info(game_rooms)").all<{ name: string }>();
   const names = new Set((columns.results || []).map(column => column.name));
+  if (!names.has("game_type")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN game_type TEXT NOT NULL DEFAULT 'hokm'").run();
   if (!names.has("group_chat_id")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN group_chat_id INTEGER").run();
+  if (!names.has("group_message_id")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN group_message_id INTEGER").run();
   if (!names.has("deleted_at")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN deleted_at TEXT").run();
   if (!names.has("cancelled_at")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN cancelled_at TEXT").run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS player_game_stats (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_type TEXT NOT NULL,
+    rating INTEGER NOT NULL DEFAULT 1000,
+    games_played INTEGER NOT NULL DEFAULT 0,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    draws INTEGER NOT NULL DEFAULT 0,
+    current_streak INTEGER NOT NULL DEFAULT 0,
+    best_streak INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, game_type)
+  )`).run();
+
+  const resultColumns = await env.DB.prepare("PRAGMA table_info(game_results)").all<{ name: string }>();
+  const resultNames = new Set((resultColumns.results || []).map(column => column.name));
+  if (!resultNames.has("game_id")) await env.DB.prepare("ALTER TABLE game_results ADD COLUMN game_id TEXT").run();
+
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_game_rooms_status ON game_rooms(status, created_at DESC)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_game_rooms_group ON game_rooms(group_chat_id, created_at DESC)").run();
 }
@@ -1914,14 +1935,20 @@ export default {
           steps.push({ step: "game_results.game_id", ok: true, detail: "column already exists" });
         }
 
-        await env.DB.prepare(`
-          UPDATE game_results
-          SET game_id = (
-            SELECT game_type FROM game_rooms WHERE game_rooms.id = game_results.room_id
-          )
-          WHERE game_id IS NULL
-        `).run();
-        steps.push({ step: "backfill_game_id", ok: true });
+        const roomColumns = await env.DB.prepare("PRAGMA table_info(game_rooms)").all<{ name: string }>();
+        const hasRoomGameType = (roomColumns.results || []).some(column => column.name === "game_type");
+        if (hasRoomGameType) {
+          await env.DB.prepare(`
+            UPDATE game_results
+            SET game_id = (
+              SELECT game_type FROM game_rooms WHERE game_rooms.id = game_results.room_id
+            )
+            WHERE game_id IS NULL
+          `).run();
+          steps.push({ step: "backfill_game_id", ok: true });
+        } else {
+          steps.push({ step: "backfill_game_id", ok: true, detail: "skipped: legacy game_rooms has no game_type column" });
+        }
 
         await env.DB.prepare(
           "CREATE INDEX IF NOT EXISTS idx_player_game_stats_rating ON player_game_stats(game_type, rating DESC)"
