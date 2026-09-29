@@ -727,7 +727,7 @@ export class GameRoomDurableObject {
 
       const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
 
-      if (request.headers.get("x-admin-internal-token") && request.headers.get("x-admin-internal-token") === (this.env.ADMIN_INTERNAL_TOKEN || this.env.ADMIN_SESSION_SECRET)) {
+      if (request.headers.get("x-admin-internal-token") && this.env.ADMIN_INTERNAL_TOKEN && request.headers.get("x-admin-internal-token") === this.env.ADMIN_INTERNAL_TOKEN) {
         const adminUrl = new URL(request.url);
         if (adminUrl.pathname === "/admin-room" && request.method === "POST") {
           const body = await request.json() as { type?: string };
@@ -1762,7 +1762,7 @@ export default {
             const id=env.GAME_ROOM.idFromName(body.roomId);
             const result=await env.GAME_ROOM.get(id).fetch("https://internal/admin-room", {
               method:"POST",
-              headers:{"x-admin-internal-token":env.ADMIN_INTERNAL_TOKEN || env.ADMIN_SESSION_SECRET || "", "content-type":"application/json"},
+              headers:{"x-admin-internal-token":env.ADMIN_INTERNAL_TOKEN || "", "content-type":"application/json"},
               body:JSON.stringify({ type:body.type === "room_cancel" ? "cancel" : "close" })
             });
             const data=await result.json();
