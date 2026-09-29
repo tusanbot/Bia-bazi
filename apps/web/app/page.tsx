@@ -27,8 +27,7 @@ export default function Home() {
     initTelegram();
 
     const currentUser = telegramUser();
-    const gameParam = new URLSearchParams(window.location.search).get("game");
-    const startParam = telegramStartParam();
+      const startParam = telegramStartParam();
     if (startParam === "games") {
       router.replace("/games");
       return;
@@ -120,8 +119,7 @@ export default function Home() {
     }
   }, [router]);
 
-  async function createRoom(gameOverride?: "hokm" | "scala_quaranta") {
-    const game = gameOverride ?? selectedGame;
+  async function createRoom(game: "hokm" | "scala_quaranta" = "hokm") {
     if (!user) {
       setError("برای ورود و ساخت بازی، این صفحه را از داخل ربات تلگرام باز کنید.");
       return;
@@ -203,7 +201,10 @@ export default function Home() {
 
       <section>
         <div className="section-title"><h2>بازی‌ها</h2><span>۱۱ بازی</span></div>
-        <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={() => createRoom("hokm")} learnHref="/games/hokm/learn" />\n        <div style={{ height: 8 }} />\n        <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" playerModes={[2, 3, 4, 5, 6]} selectedMode={scalaMode} onModeChange={value => { setScalaMode(value); }} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
+        <div className="games-stack">
+          <GameCard emoji="🃏" title="حکم" subtitle="حکم دو، سه و چهار نفره" meta="۲ تا ۴ بازیکن" playerModes={[2, 3, 4]} selectedMode={hokmMode} onModeChange={setHokmMode} onPlay={() => createRoom("hokm")} learnHref="/games/hokm/learn" />
+          <GameCard emoji="🂡" title="اسکالا کوآرانتا" subtitle="رامی ۲ تا ۶ نفره با افتتاح ۴۰ امتیازی" meta="۲ تا ۶ بازیکن" selectedMode={scalaMode} onModeChange={setScalaMode} onPlay={() => createRoom("scala_quaranta")} learnHref="/games/scala-quaranta/learn" />
+        </div>
       </section>
 
       {creating && !groupLaunch && <div className="mode-hint">در حال ساخت اتاق...</div>}
