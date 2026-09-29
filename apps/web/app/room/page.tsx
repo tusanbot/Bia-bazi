@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initTelegram, telegramUser, waitForTelegram } from "../../lib/telegram";
+import { telegramInitData,\n  initTelegram, telegramUser, waitForTelegram } from "../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type RoomPlayer = {
@@ -45,7 +45,7 @@ export default function RoomPage() {
 
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
-      window.Telegram?.WebApp?.initDataUnsafe?.start_param ??
+      telegramInitData()Unsafe?.start_param ??
       new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
       "";
     const startRoom = startParam.startsWith("room_") ? startParam.slice(5) : "";
@@ -65,7 +65,7 @@ export default function RoomPage() {
   const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "بازیکن";
 
   const refresh = useCallback(async () => {
-    const initData = window.Telegram?.WebApp?.initData ?? "";
+    const initData = telegramInitData() ?? "";
     const headers: HeadersInit = {};
     if (initData) headers["x-telegram-init-data"] = initData;
 
@@ -133,7 +133,7 @@ export default function RoomPage() {
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, initData: window.Telegram?.WebApp?.initData ?? "" })
+        body: JSON.stringify({ ...body, initData: telegramInitData() ?? "" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
@@ -365,7 +365,7 @@ export default function RoomPage() {
                 const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ type: "leave", playerId, initData: window.Telegram?.WebApp?.initData ?? "" })
+                  body: JSON.stringify({ type: "leave", playerId, initData: telegramInitData() ?? "" })
                 });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error || "خروج از اتاق ناموفق بود");
