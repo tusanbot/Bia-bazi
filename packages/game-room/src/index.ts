@@ -112,6 +112,13 @@ export class GameRoom {
     return this.getState();
   }
 
+  setTargetScore(targetScore: 1 | 3 | 5 | 7): GameRoomState {
+    if (this.state.status !== "waiting") throw new Error("Target score can only be changed before the game starts");
+    if (![1, 3, 5, 7].includes(targetScore)) throw new Error("Invalid target score");
+    this.state.config.targetScore = targetScore;
+    return this.getState();
+  }
+
   setAutoPlay(enabled: boolean, delaySeconds: number): GameRoomState {
     if (this.state.status !== "waiting") throw new Error("Auto play settings can only be changed before the game starts");
     if (delaySeconds < 5 || delaySeconds > 60) throw new Error("Auto play delay must be between 5 and 60 seconds");
