@@ -1750,7 +1750,7 @@ export default {
 
         if (url.pathname === "/admin/api/games" && request.method === "GET") {
           const rows=await env.DB.prepare(
-            "SELECT game_type AS gameId,COUNT(DISTINCT room_id) AS gamesPlayed,COUNT(*) AS resultRows,MAX(created_at) AS lastPlayed FROM game_results GROUP BY game_type ORDER BY gamesPlayed DESC"
+            "SELECT game_id AS gameId,COUNT(DISTINCT room_id) AS gamesPlayed,COUNT(*) AS resultRows,MAX(created_at) AS lastPlayed FROM game_results WHERE game_id IS NOT NULL AND game_id <> '' GROUP BY game_id ORDER BY gamesPlayed DESC"
           ).all();
           return Response.json({ games: rows.results || [] });
         }
