@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { initTelegramtelegramUser, waitForTelegram } from "../../../lib/telegram";
+import { initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
 
 type Card = { id: string; suit?: "spades" | "hearts" | "diamonds" | "clubs"; rank?: number; joker: boolean };
 type Meld = { id: string; type: "set" | "run"; cards: Card[] };
@@ -58,6 +58,9 @@ export default function ScalaRoomPage() {
       setUser(app?.initDataUnsafe?.user ?? telegramUser());
     });
     setRoomId(new URLSearchParams(window.location.search).get("room") ?? "");
+    return () => {
+      cancelled = true;
+    };
     return () => {
       cancelled = true;
     };
