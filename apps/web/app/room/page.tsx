@@ -98,7 +98,7 @@ export default function RoomPage() {
   }, [roomId, user, playerId, displayName]);
 
   useEffect(() => {
-    if (!ready || !roomId) return;
+    if (!ready || !roomId || !user) return;
     fetch(`/api/mini-app-link?room=${encodeURIComponent(roomId)}`)
       .then(res => res.ok ? res.json() : Promise.reject(new Error()))
       .then(json => setInviteLink(json.url || ""))
