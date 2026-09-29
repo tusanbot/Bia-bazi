@@ -13,7 +13,7 @@
 - ADMIN_SESSION_SECRET — یک مقدار تصادفی طولانی برای امضای session
 - ADMIN_INTERNAL_TOKEN — توکن ارتباط امن Worker با Durable Object
 
-اگر ADMIN_INTERNAL_TOKEN تنظیم نشود، کد به‌صورت fallback از ADMIN_SESSION_SECRET استفاده می‌کند؛ بهتر است هر دو جدا باشند.
+ADMIN_INTERNAL_TOKEN باید جدا از ADMIN_SESSION_SECRET تنظیم شود؛ Worker دیگر از ADMIN_SESSION_SECRET به‌عنوان جایگزین این توکن استفاده نمی‌کند.
 
 ## قابلیت‌ها
 
