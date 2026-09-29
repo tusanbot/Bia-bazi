@@ -907,8 +907,9 @@ export class GameRoomDurableObject {
           return Response.json({ ok: true });
         }
         if (internalUrl.pathname === "/telegram-action") {
-          const body = await request.json() as { userId?: string; action?: string; arg?: string };
+          const body = await request.json() as { userId?: string; displayName?: string; username?: string; action?: string; arg?: string };
           const userId = String(body.userId || "");
+          const telegramDisplayName = body.displayName || "بازیکن";
           if (!userId || !body.action) throw new Error("Invalid Telegram action");
           await this.load();
           if (!this.room) throw new Error("Room does not exist");
@@ -919,12 +920,12 @@ export class GameRoomDurableObject {
           const arg = body.arg || "";
           if (actionName === "join") {
             if (!this.room.getState().players.some((p:any)=>p.id===userId)) {
-              this.room.join({id:userId, displayName:"بازیکن"});
+              this.room.join({id:userId, displayName:telegramDisplayName, username:body.username});
             }
           } else if (actionName === "seat") {
             const seat = Number(arg);
             if (!Number.isInteger(seat) || seat < 0 || seat > 3) throw new Error("صندلی نامعتبر است");
-            if (!this.room.getState().players.some((p:any)=>p.id===userId)) this.room.join({id:userId,displayName:"بازیکن"});
+            if (!this.room.getState().players.some((p:any)=>p.id===userId)) this.room.join({id:userId,displayName:telegramDisplayName,username:body.username});
             this.room.setPlayerSeat(userId, seat);
           } else if (actionName === "leave") {
             this.room.leave(userId);
@@ -1580,7 +1581,7 @@ async function telegramGetBoardMeta(state: DurableObjectState) {
 async function telegramEditBoard(env: Env, state: DurableObjectState, room: any, game?: any) {
   const meta = await telegramGetBoardMeta(state);
   if (!meta) return;
-  await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "editMessageText", {
+  const response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "editMessageText", {
     chat_id: meta.chatId,
     message_id: meta.messageId,
     text: telegramRoomText(room, game),
@@ -1588,6 +1589,9 @@ async function telegramEditBoard(env: Env, state: DurableObjectState, room: any,
     disable_web_page_preview: true,
     reply_markup: telegramBoardKeyboard(room, game)
   });
+  if (!response?.ok && !String(response?.description || "").includes("message is not modified")) {
+    throw new Error(response?.description || "Telegram board update failed");
+  }
 }
 
 async function telegramUpsertPrivateHand(env: Env, state: DurableObjectState, room: any, game: any, playerId: string) {
@@ -1685,7 +1689,6 @@ async function handleTelegramWebhook(request: Request, env: Env) {
   if (update.callback_query) {
     const q = update.callback_query;
     try {
-      await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "answerCallbackQuery", { callback_query_id: q.id });
       const parts = String(q.data || "").split("|");
       if (parts[0] !== "h" || !parts[1]) return Response.json({ ok: true });
       const roomId = parts[1];
@@ -1695,11 +1698,13 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       const response = await roomDo.fetch("https://internal/telegram-action", {
         method: "POST",
         headers: { "content-type":"application/json", "x-bia-bot-token":env.TELEGRAM_BOT_TOKEN },
-        body: JSON.stringify({ userId:String(q.from.id), action: action==="s" ? "seat" : action==="c" ? "pv" : action==="j" ? "join" : action==="t" ? "trump" : action==="p" ? "play" : action==="q" ? "toggle_card" : action==="qdone" ? "discard_done" : action==="d" ? "draw" : action==="f" ? "finish" : action==="n" ? "next" : action==="start" ? "start" : action==="leave" ? "leave" : action==="pv" ? "pv" : action==="x" ? "noop" : action, arg })
+        body: JSON.stringify({ userId:String(q.from.id), displayName:botUserName(q.from), username:q.from.username, action: action==="s" ? "seat" : action==="c" ? "pv" : action==="j" ? "join" : action==="t" ? "trump" : action==="p" ? "play" : action==="q" ? "toggle_card" : action==="qdone" ? "discard_done" : action==="d" ? "draw" : action==="f" ? "finish" : action==="n" ? "next" : action==="start" ? "start" : action==="leave" ? "leave" : action==="pv" ? "pv" : action==="x" ? "noop" : action, arg })
       });
       if (!response.ok) {
         const err = await response.json().catch(()=>({error:"عملیات ناموفق بود"})) as any;
         await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"answerCallbackQuery",{callback_query_id:q.id,text:err.error||"عملیات ناموفق بود",show_alert:true});
+      } else {
+        await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"answerCallbackQuery",{callback_query_id:q.id});
       }
     } catch (error) {
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"answerCallbackQuery",{callback_query_id:q.id,text:error instanceof Error?error.message:"عملیات ناموفق بود",show_alert:true}).catch(()=>{});
