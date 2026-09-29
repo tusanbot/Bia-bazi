@@ -14,9 +14,9 @@ type Props = {
 
 export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selectedMode, onModeChange, onPlay, learnHref }: Props) {
   return (
-    <article className="game-card">
+    <article className="game-card game-card-enhanced">
       <div className="game-icon">{emoji}</div>
-      <div className="game-copy">
+      <div className="game-copy game-copy-enhanced">
         <h3>{title}</h3>
         <p>{subtitle}</p>
         <small>{meta}</small>
@@ -33,7 +33,7 @@ export function GameCard({ emoji, title, subtitle, meta, playerModes = [], selec
           <Link className="learn-link" href={learnHref}>آموزش بازی</Link>
         )}
       </div>
-      <button className="play" type="button" onClick={onPlay}>بازی</button>
+      <div className="game-card-actions"><button className="play" type="button" onClick={onPlay}>بازی</button></div>
     </article>
   );
 }
