@@ -292,7 +292,7 @@ export default function HokmGamePage() {
   return (
     <main className="shell hokm-game">
       <div className="game-navigation">\n        <Link className="secondary" href={`/games/${game.rules.variantId === "standard" || game.rules.variantId === "saras" || game.rules.variantId === "naras" || game.rules.variantId === "tak_bresh" ? "hokm" : "hokm"}/learn`}>آموزش</Link>
-        <button className="secondary" disabled={busy} onClick={() => router.replace(`/room?room=${encodeURIComponent(roomId)}&from=game`)}>بازگشت</button>
+        <button className="secondary" disabled={busy} onClick={() => router.replace(`/room?room=${encodeURIComponent(roomId)}&from=game`)}>بازگشت به اتاق</button>\n        {data.room.status === "playing" && game.phase !== "game_finished" && <button className="secondary danger" disabled={busy} onClick={() => act({ type: "surrender" })}>تسلیم شدن</button>}
         {isHost && data.room.status === "playing" && (
           <button className="secondary danger" disabled={busy} onClick={() => act({ type: "cancel_room" })}>لغو بازی</button>
         )}
