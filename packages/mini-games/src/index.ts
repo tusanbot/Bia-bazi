@@ -670,6 +670,7 @@ export function applyMiniAction(state: MiniGameState, action: MiniAction, player
     case "shelem": return shelem(s, action, playerId);
     case "backgammon": return backgammon(s, action, playerId, rng);
   }
+  throw new Error("بازی ناشناخته است");
 }
 
 function haft(s: MiniGameState, a: MiniAction, p: string): MiniGameState {
