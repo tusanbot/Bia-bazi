@@ -195,6 +195,37 @@ function adminCookie(value: string, maxAge: number) {
   return `bia_admin=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
 }
 
+async function ensureOperationalSchema(env: Env) {
+  if (!env.DB) return;
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS bot_groups (
+    chat_id INTEGER PRIMARY KEY, title TEXT, username TEXT,
+    type TEXT NOT NULL DEFAULT 'supergroup', member_count INTEGER,
+    blocked INTEGER NOT NULL DEFAULT 0, bot_status TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS group_members (
+    chat_id INTEGER NOT NULL, telegram_id INTEGER NOT NULL,
+    display_name TEXT, username TEXT, status TEXT NOT NULL DEFAULT 'seen',
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (chat_id, telegram_id)
+  )`).run();
+
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_bot_groups_status ON bot_groups(blocked, updated_at DESC)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_group_members_seen ON group_members(chat_id, last_seen_at DESC)`).run();
+
+  const columns = await env.DB.prepare("PRAGMA table_info(game_rooms)").all<{ name: string }>();
+  const names = new Set((columns.results || []).map(column => column.name));
+  if (!names.has("group_chat_id")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN group_chat_id INTEGER").run();
+  if (!names.has("deleted_at")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN deleted_at TEXT").run();
+  if (!names.has("cancelled_at")) await env.DB.prepare("ALTER TABLE game_rooms ADD COLUMN cancelled_at TEXT").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_game_rooms_status ON game_rooms(status, created_at DESC)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_game_rooms_group ON game_rooms(group_chat_id, created_at DESC)").run();
+}
+
 async function upsertBotGroup(env: Env, chat: { id: number; title?: string; username?: string; type?: string }, botStatus?: string) {
   if (!env.DB || !["group", "supergroup"].includes(chat.type || "")) return;
   let memberCount: number | null = null;
@@ -1374,6 +1405,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
   if (!secret) return Response.json({ error: "Webhook secret is not configured" }, { status: 503 });
   if (request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const update = await request.json() as BotUpdate;
+  await ensureOperationalSchema(env);
   const me = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "getMe", {});
   const username = me?.result?.username as string | undefined;
   if (!username) throw new Error("Bot username unavailable");
@@ -1669,6 +1701,7 @@ export default {
 
         await requireAdmin(request, env);
         if (!env.DB) return Response.json({ error: "D1 database is not configured" }, { status: 500 });
+        await ensureOperationalSchema(env);
 
         if (url.pathname === "/admin/api/me") return Response.json({ ok: true });
 
@@ -1912,6 +1945,12 @@ export default {
       headers.set("x-bia-bot-token", env.TELEGRAM_BOT_TOKEN);
 
       return env.GAME_ROOM.get(id).fetch(new Request(request, { headers }));
+    }
+
+    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+      const adminUrl = new URL(request.url);
+      adminUrl.pathname = "/admin/";
+      return env.ASSETS.fetch(new Request(adminUrl.toString(), request));
     }
 
     return env.ASSETS.fetch(request);
