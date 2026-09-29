@@ -451,6 +451,20 @@ function shelem(s: MiniGameState, a: MiniAction, p: string) {
       s.bidWinnerId = p;
     }
     const active = s.players.filter(x => !passed[x.id]);
+    if (active.length === 0) {
+      const cards = shuffle(deck());
+      const hands: Record<string, Card[]> = {};
+      for (const player of s.players) hands[player.id] = cards.splice(0, 12);
+      s.hands = hands;
+      s.talon = cards.splice(0, 4);
+      s.bids = {};
+      s.passed = {};
+      s.bidWinnerId = undefined;
+      s.bidValue = 95;
+      s.turnPlayerId = s.players[0].id;
+      s.round = Number(s.round || 1) + 1;
+      return s;
+    }
     if (active.length === 1 && s.bidWinnerId) {
       s.phase = "talon";
       s.turnPlayerId = s.bidWinnerId;
