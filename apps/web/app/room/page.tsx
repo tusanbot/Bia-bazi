@@ -81,7 +81,7 @@ export default function RoomPage() {
     if (!res.ok && res.status === 400 && user) {
       const joinRes = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
         body: JSON.stringify({
           type: "join",
           initData,
@@ -136,7 +136,7 @@ export default function RoomPage() {
       const initData = await ensureTelegramAuth();
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
         body: JSON.stringify({ ...body, initData })
       });
       const json = await res.json();
@@ -369,9 +369,10 @@ export default function RoomPage() {
               setBusy(true);
               setError("");
               try {
+                const initData = await ensureTelegramAuth();
                 const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
                   method: "POST",
-                  headers: { "content-type": "application/json" },
+                  headers: { "content-type": "application/json", "x-telegram-init-data": initData },
                   body: JSON.stringify({ type: "leave", playerId, initData })
                 });
                 const json = await res.json();
