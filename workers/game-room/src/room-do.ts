@@ -897,10 +897,12 @@ export class GameRoomDurableObject {
             displayName: params.get("displayName") || "بازیکن",
             username: params.get("username") || undefined,
             action: params.get("action") || "",
-            arg: params.get("arg") || ""
+            arg: params.get("arg") || "",
+            callbackQueryId: params.get("callbackQueryId") || ""
           };
           const userId = String(body.userId || "");
           const telegramDisplayName = body.displayName || "بازیکن";
+          const callbackQueryId = body.callbackQueryId || undefined;
           if (!userId || !body.action) throw new Error("Invalid Telegram action");
           await this.load();
           if (!this.room) throw new Error("Room does not exist");
@@ -1004,6 +1006,8 @@ export class GameRoomDurableObject {
           } else if (actionName === "draw") {
             if (!this.game) throw new Error("بازی شروع نشده است");
             this.game=drawTwo(this.game,userId,arg==="1");
+          } else if (actionName === "show_hand") {
+            // Render the caller's private hand as an ephemeral message inside the group.
           } else if (actionName === "pv") {
             // Refresh only; no game mutation.
           } else if (actionName === "noop") {
@@ -1012,7 +1016,7 @@ export class GameRoomDurableObject {
           }
           await this.persistRoom(); await this.save(); await this.syncRegistry();
           await telegramEditBoard(this.env,this.state,this.room.getState(),this.game);
-          await telegramRefreshAllPrivateHands(this.env,this.state,this.room.getState(),this.game);
+          if (this.game) await telegramRefreshAllGroupHands(this.env,this.state,this.room.getState(),this.game,userId,callbackQueryId);
           return Response.json({ok:true,room:this.room.getState(),game:this.game});
         }
       }
@@ -1047,7 +1051,7 @@ export class GameRoomDurableObject {
         }
         if (action.type === "create_group_room" && action.chatId) {
           const existing = await telegramGetBoardMeta(this.state);
-          await this.state.storage.put("telegram_board", existing || { chatId: action.chatId, messageId: 0, pvMessages: {}, selections: {} });
+          await this.state.storage.put("telegram_board", existing || { chatId: action.chatId, messageId: 0, pvMessages: {}, ephemeralMessages: {}, selections: {} });
           if (this.env.DB) {
             await this.env.DB.prepare("UPDATE game_rooms SET group_chat_id=? WHERE id=?").bind(Number(action.chatId), roomId).run().catch(()=>{});
           }
@@ -1567,16 +1571,18 @@ type TelegramBoardMeta = {
   chatId: string;
   messageId: number;
   pvMessages: Record<string, number>;
+  ephemeralMessages?: Record<string, number>;
   selections: Record<string, string[]>;
   managementUserId?: string;
 };
 
 function telegramTeamEmoji(room: any, playerId: string) {
   const players = [...(room.players || [])].sort((a: any, b: any) => (a.seat ?? 99) - (b.seat ?? 99));
-  if (players.length === 4) {
-    const p = players.find((x: any) => x.id === playerId);
-    return p && (p.seat === 0 || p.seat === 2) ? "🔴" : "🔵";
-  }
+  const p = players.find((x: any) => x.id === playerId);
+  if (!p) return "⚪";
+  if (players.length === 4) return p.seat === 0 || p.seat === 2 ? "🔴" : "🔵";
+  if (players.length === 2) return (p.seat ?? 0) % 2 === 0 ? "🔴" : "🔵";
+  if (players.length === 3) return ["🔴", "🔵", "🟢"][Math.max(0, Math.min(2, players.indexOf(p)))] || "🟢";
   return "🟢";
 }
 
@@ -1594,24 +1600,54 @@ function telegramSuitLabel(suit: string) {
   return ({spades:"♠️ پیک", hearts:"♥️ دل", diamonds:"♦️ خشت", clubs:"♣️ گشنیز"} as Record<string,string>)[suit] || suit;
 }
 
+function telegramTrickCard(game: any, seat: number) {
+  const trick = Array.isArray(game?.trick) && game.trick.length ? game.trick : (game?.lastCompletedTrick || []);
+  const player = (game?.players || []).find((p: any) => p.seat === seat);
+  const play = trick.find((item: any) => item.playerId === player?.id);
+  return play?.card || null;
+}
+
 function telegramRoomText(room: any, game?: any) {
   const players = [...(room.players || [])].sort((a: any,b: any)=>(a.seat ?? 99)-(b.seat ?? 99));
   const lines: string[] = ["🃏 <b>بازی حکم</b>", "━━━━━━━━━━━━━━"];
   if (game) {
     const variant = game.rules?.variantId === "standard" ? "معمولی" : (game.rules?.variantId || "حکم");
-    const scoreParts = game.players?.length === 4
-      ? [
-          `🔴 تیم ۱: <b>${game.scores?.[game.players?.[0]?.id] ?? 0}</b>`,
-          `🔵 تیم ۲: <b>${game.scores?.[game.players?.[1]?.id] ?? 0}</b>`
-        ]
-      : (game.players || []).map((p: any) => `${telegramTeamEmoji(room,p.id)} ${p.displayName || "بازیکن"}: <b>${game.scores?.[p.id] ?? 0}</b>`);
-    lines.push(scoreParts.join("   ·   "));
+    if (game.players?.length === 4) {
+      const teamA = game.teams?.find((t:any) => t.id === "team-a")?.playerIds || [];
+      const teamB = game.teams?.find((t:any) => t.id === "team-b")?.playerIds || [];
+      lines.push(
+        `🔴 تیم ۱: ${teamA.map((id:string) => game.players.find((p:any)=>p.id===id)?.displayName || "بازیکن").join(" + ")} — <b>${game.scores?.[teamA[0]] ?? 0}</b>`,
+        `🔵 تیم ۲: ${teamB.map((id:string) => game.players.find((p:any)=>p.id===id)?.displayName || "بازیکن").join(" + ")} — <b>${game.scores?.[teamB[0]] ?? 0}</b>`
+      );
+    } else {
+      lines.push((game.players || []).map((p:any) =>
+        `${telegramTeamEmoji(room,p.id)} ${p.displayName || "بازیکن"}: <b>${game.scores?.[p.id] ?? 0}</b>`
+      ).join("   ·   "));
+    }
     lines.push(`🎯 حکم: <b>${game.hokm ? telegramSuitLabel(game.hokm) : "انتخاب نشده"}</b>   ·   🧩 ${variant}`);
     lines.push(`📘 دور ${(game.handsCompleted ?? 0) + 1}   ·   دست ${(game.tricksWon ? Math.max(0, ...Object.values(game.tricksWon as Record<string,number>)) : 0) + 1}/7`);
     if (game.phase === "select_hokm") lines.push(`👑 حاکم: ${players.find((p:any)=>p.id===game.hokmPlayerId)?.displayName || "بازیکن"} — انتخاب حکم`);
-    else if (game.phase === "playing") lines.push(`▶️ نوبت: ${players.find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"}`);
+    else if (game.phase === "build_two_player_hand") {
+      const b = game.twoPlayerBuild;
+      const current = players.find((p:any)=>p.id===b?.currentPlayer)?.displayName || "بازیکن";
+      lines.push(b?.phase === "draw"
+        ? `🎴 ${current} بین دو کارت انتخاب می‌کند`
+        : `🗑 ${current} در حال انتخاب کارت‌های حذف‌شدنی است`);
+    } else if (game.phase === "playing") lines.push(`▶️ نوبت: ${players.find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"}`);
     else if (game.phase === "hand_finished") lines.push("🏁 این دست تمام شد؛ نتیجه را ثبت کنید.");
     else if (game.phase === "game_finished") lines.push("🏆 بازی به پایان رسید.");
+
+    const trick = Array.isArray(game.trick) && game.trick.length ? game.trick : (game.lastCompletedTrick || []);
+    if (trick.length) {
+      const ordered = [0,1,3,2].map(seat => {
+        const p = players.find((x:any)=>x.seat===seat);
+        const play = trick.find((x:any)=>x.playerId===p?.id);
+        return play ? `${p?.displayName || "بازیکن"}: <b>${telegramCardLabel(play.card)}</b>` : null;
+      }).filter(Boolean);
+      lines.push("", "🃏 <b>کارت‌های روی میز</b>", ordered.join("  ·  "));
+    } else {
+      lines.push("", "🃏 <b>کارت‌های روی میز</b>", "هنوز کارتی روی میز نیست.");
+    }
   } else {
     lines.push(`👥 بازیکنان: <b>${players.length}/${room.config?.playerCount || 4}</b>`);
     lines.push("برای ورود، روی صندلی خالی بزنید.");
@@ -1642,28 +1678,46 @@ function telegramBoardKeyboard(room: any, game?: any, managementUserId?: string)
     ];
     return {inline_keyboard: rows};
   }
-  const seats = [0,1,2,3];
-  const labelForSeat = (seat: number) => {
+
+  const cardAtSeat = (seat:number) => {
+    const card = telegramTrickCard(game, seat);
+    return card ? "🃏 " + telegramCardLabel(card) : null;
+  };
+  const seatLabel = (seat:number) => {
     const p = telegramSeatPlayer(room,seat);
-    if (!p) return "👤 صندلی خالی";
+    const card = cardAtSeat(seat);
+    if (card) return card;
+    if (!p) return "·";
     const active = game?.turnPlayerId === p.id && game?.phase === "playing";
     return `${active ? "▶️" : telegramTeamEmoji(room,p.id)} ${p.displayName || "بازیکن"}`;
   };
-  const seatButton = (seat: number) => ({ text: labelForSeat(seat), callback_data: `h|${room.id}|s|${seat}` });
-  const noop = { text: "·", callback_data: `h|${room.id}|x` };
-  const centerText = game?.phase === "select_hokm" ? "🃏 انتخاب حکم" : game?.phase === "playing" ? "🎴 حکم" : game?.phase === "hand_finished" ? "🏁 پایان دست" : game?.phase === "game_finished" ? "🏆 نتیجه" : "🃏 حکم";
-  const keyboard: any[][] = [
+  const seatButton = (seat:number) => ({text:seatLabel(seat),callback_data:`h|${room.id}|s|${seat}`});
+  const centerText = game?.hokm ? "🎯 " + telegramSuitLabel(game.hokm) : game?.phase === "select_hokm" ? "🃏 حکم" : "🃏 میز";
+  const noop = {text:"·",callback_data:`h|${room.id}|x`};
+  const keyboard:any[][] = [
     [noop, seatButton(0), noop],
-    [seatButton(1), { text: centerText, callback_data: `h|${room.id}|c` }, seatButton(3)],
+    [seatButton(1), {text:centerText,callback_data:`h|${room.id}|c`}, seatButton(3)],
     [noop, seatButton(2), noop]
   ];
-  if (!game && room.status === "waiting") keyboard.push([{ text: "▶️ شروع بازی", callback_data: `h|${room.id}|start` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
-  else if (game?.phase === "hand_finished") keyboard.push([{ text: "🏁 ثبت نتیجه دست", callback_data: `h|${room.id}|finish` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
-  else if (game?.phase === "game_finished") keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
-  else keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
-  if (room.status === "waiting") {
-    keyboard.push([{ text: "⚙️ مدیریت بازی", callback_data: `h|${room.id}|m` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+
+  if (game?.phase === "select_hokm") {
+    keyboard.push([{text:"🃏 انتخاب حکم",callback_data:`h|${room.id}|hand`}]);
+  } else if (game?.phase === "build_two_player_hand") {
+    keyboard.push([{text:"🃏 دست من",callback_data:`h|${room.id}|hand`}]);
+  } else if (game?.phase === "playing") {
+    keyboard.push([{text:"🃏 دست من",callback_data:`h|${room.id}|hand`}]);
   }
+
+  if (!game && room.status === "waiting") {
+    keyboard.push([{ text: "▶️ شروع بازی", callback_data: `h|${room.id}|start` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  } else if (game?.phase === "hand_finished") {
+    keyboard.push([{ text: "🏁 ثبت نتیجه دست", callback_data: `h|${room.id}|finish` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  } else if (game?.phase === "game_finished") {
+    keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  } else {
+    keyboard.push([{ text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+  }
+  if (room.status === "waiting") keyboard.push([{ text: "⚙️ مدیریت بازی", callback_data: `h|${room.id}|m` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
   return { inline_keyboard: keyboard };
 }
 
@@ -1690,69 +1744,118 @@ async function telegramEditBoard(env: Env, state: DurableObjectState, room: any,
   }
 }
 
-async function telegramUpsertPrivateHand(env: Env, state: DurableObjectState, room: any, game: any, playerId: string) {
-  const meta = await telegramGetBoardMeta(state);
-  if (!meta || !game || !room.players?.some((p:any)=>p.id===playerId)) return;
-  const hand = game.hands?.[playerId] || [];
-  const pvChatId = playerId;
-  const selection = meta.selections?.[playerId] || [];
-  const player = room.players.find((p:any)=>p.id===playerId);
-  const lines = [`🃏 <b>دست شما — ${player?.displayName || "بازیکن"}</b>`, `حکم: <b>${game.hokm ? telegramSuitLabel(game.hokm) : "انتخاب نشده"}</b>`];
-  if (game.phase === "select_hokm" && game.hokmPlayerId === playerId) {
-    lines.push("", "👑 شما حاکم هستید؛ حکم را انتخاب کنید.");
-  } else if (game.phase === "playing") {
-    lines.push("", game.turnPlayerId === playerId ? "▶️ نوبت شماست." : `⏳ نوبت ${room.players.find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"} است.`);
-  } else if (game.phase === "build_two_player_hand" && game.twoPlayerBuild?.currentPlayer === playerId) {
-    lines.push("", game.twoPlayerBuild.phase === "draw" ? "دو کارت را ببینید و یکی را نگه دارید." : "کارت‌های لازم را برای دور ساخت دست انتخاب کنید.");
+function telegramHandView(room:any, game:any, playerId:string) {
+  const hand = game?.hands?.[playerId] || [];
+  const selection = new Set<string>();
+  const meta = game?._telegramSelection;
+  if (Array.isArray(meta)) for (const id of meta) selection.add(id);
+  const player = (room.players || []).find((p:any)=>p.id===playerId);
+  const lines = [
+    `🃏 <b>دست شما — ${player?.displayName || "بازیکن"}</b>`,
+    `🎯 حکم: <b>${game?.hokm ? telegramSuitLabel(game.hokm) : "انتخاب نشده"}</b>`,
+    `🃏 تعداد کارت: <b>${hand.length}</b>`
+  ];
+  const build = game?.twoPlayerBuild;
+  if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) lines.push("", "👑 شما حاکم هستید؛ خال حکم را انتخاب کنید.");
+  if (game?.phase === "build_two_player_hand" && build?.currentPlayer === playerId) {
+    if (build.phase === "draw") {
+      lines.push(`📦 دو کارت پیشنهادی: <b>2</b>  ·  انتخاب بعدی: <b>${hand.length}</b>`);
+    } else {
+      const required = playerId === game.hokmPlayerId ? 3 : 2;
+      const selectedCount = selection.size;
+      lines.push(`🗑 حذف: <b>${selectedCount}/${required}</b>  ·  باقی‌مانده برای انتخاب: <b>${Math.max(0, required-selectedCount)}</b>`);
+      if (selectedCount === required) lines.push("✅ انتخاب کامل شد.");
+    }
+  } else if (game?.phase === "playing") {
+    lines.push("", game.turnPlayerId === playerId ? "▶️ <b>نوبت شماست</b>" : `⏳ نوبت ${(room.players||[]).find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"} است.`);
   }
+  return {lines, hand, selection};
+}
+
+function telegramHandKeyboard(room:any, game:any, playerId:string, selection:string[]) {
+  const hand = game?.hands?.[playerId] || [];
   const rows:any[][] = [];
-  if (game.phase === "select_hokm" && game.hokmPlayerId === playerId) {
+  if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) {
     rows.push(
       [{text:"♠️ پیک",callback_data:`h|${room.id}|t|spades`},{text:"♥️ دل",callback_data:`h|${room.id}|t|hearts`}],
       [{text:"♦️ خشت",callback_data:`h|${room.id}|t|diamonds`},{text:"♣️ گشنیز",callback_data:`h|${room.id}|t|clubs`}]
     );
-  } else if (game.phase === "playing") {
+  } else if (game?.phase === "build_two_player_hand" && game.twoPlayerBuild?.currentPlayer === playerId) {
+    if (game.twoPlayerBuild.phase === "draw") {
+      rows.push((game.twoPlayerBuild.drawOptions || []).map((card:any,i:number)=>({
+        text:`🎴 ${i+1}: ${telegramCardLabel(card)}`,
+        callback_data:`h|${room.id}|d|${i}`
+      })));
+    } else {
+      for (let i=0;i<hand.length;i+=3) rows.push(hand.slice(i,i+3).map((card:any)=>({
+        text:`${selection.includes(card.id) ? "☑️ " : "⬜ "}${telegramCardLabel(card)}`,
+        callback_data:`h|${room.id}|q|${card.id}`
+      })));
+      const required = playerId === game.hokmPlayerId ? 3 : 2;
+      rows.push([{text:`✅ تأیید انتخاب (${selection.length}/${required})`,callback_data:`h|${room.id}|qdone`}]);
+    }
+  } else if (game?.phase === "playing") {
     const legal = game.turnPlayerId === playerId
       ? legalCards(hand, game.trick?.[0]?.card?.suit).filter((card:any)=>isLegalMove(game, playerId, card.id))
       : [];
-    const source = game.turnPlayerId === playerId ? legal : hand;
-    for (let i=0;i<source.length;i+=3) {
-      rows.push(source.slice(i,i+3).map((card:any)=>({
-        text: `${selection.includes(card.id) ? "☑️ " : ""}${telegramCardLabel(card)}`,
-        callback_data: `h|${room.id}|p|${card.id}`
-      })));
-    }
-  } else if (game.phase === "build_two_player_hand" && game.twoPlayerBuild?.currentPlayer === playerId) {
-    if (game.twoPlayerBuild.phase === "draw") {
-      rows.push((game.twoPlayerBuild.drawOptions || []).map((_:any,i:number)=>({text:`🎴 گزینه ${i+1}`,callback_data:`h|${room.id}|d|${i}`})));
-    } else {
-      for (let i=0;i<hand.length;i+=3) rows.push(hand.slice(i,i+3).map((card:any)=>({text:`${selection.includes(card.id) ? "☑️ " : ""}${telegramCardLabel(card)}`,callback_data:`h|${room.id}|q|${card.id}`})));
-      rows.push([{text:"✅ تأیید انتخاب",callback_data:`h|${room.id}|qdone`}]);
-    }
+    const source = game.turnPlayerId === playerId ? legal : [];
+    for (let i=0;i<source.length;i+=3) rows.push(source.slice(i,i+3).map((card:any)=>({
+      text:`🃏 ${telegramCardLabel(card)}`,
+      callback_data:`h|${room.id}|p|${card.id}`
+    })));
   }
-  if (game.phase === "playing" && game.turnPlayerId !== playerId) rows.push([{text:"🔄 بروزرسانی دست",callback_data:`h|${room.id}|pv`}]);
-  if (!rows.length) rows.push([{text:"🔄 بروزرسانی",callback_data:`h|${room.id}|pv`}]);
-  const existingMessageId = meta.pvMessages?.[playerId];
-  const payload:any = { chat_id: pvChatId, text: lines.join("\n"), parse_mode:"HTML", disable_web_page_preview:true, reply_markup:{inline_keyboard:rows} };
+  if (!rows.length) rows.push([{text:"🔄 بروزرسانی دست",callback_data:`h|${room.id}|hand`}]);
+  return {inline_keyboard:rows};
+}
+
+async function telegramUpsertGroupHand(env: Env, state: DurableObjectState, room:any, game:any, playerId:string, callbackQueryId?:string) {
+  const meta = await telegramGetBoardMeta(state);
+  if (!meta || !game || !room.players?.some((p:any)=>p.id===playerId)) return;
+  const selection = meta.selections?.[playerId] || [];
+  const cloned = structuredClone(game);
+  cloned._telegramSelection = selection;
+  const view = telegramHandView(room, cloned, playerId);
+  const keyboard = telegramHandKeyboard(room, cloned, playerId, selection);
+  const existingMessageId = meta.ephemeralMessages?.[playerId];
+  const chatId = meta.chatId;
+  const payload:any = {
+    chat_id: chatId,
+    text: view.lines.join("\n"),
+    parse_mode:"HTML",
+    disable_web_page_preview:true,
+    reply_markup:keyboard
+  };
+
   let response:any;
   if (existingMessageId) {
-    response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"editMessageText",{...payload,message_id:existingMessageId});
+    response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"editEphemeralMessageText",{
+      ...payload,
+      receiver_user_id:Number(playerId),
+      ephemeral_message_id:existingMessageId
+    });
   }
   if (!response?.ok) {
-    response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"sendMessage",payload);
-    if (response?.ok && response.result?.message_id) {
-      meta.pvMessages[playerId] = response.result.message_id;
+    const ephemeral:any = {receiver_user_id:Number(playerId)};
+    if (callbackQueryId) ephemeral.callback_query_id = callbackQueryId;
+    response = await telegramBotApi(env.TELEGRAM_BOT_TOKEN,"sendMessage",{
+      ...payload,
+      ephemeral_message_parameters:ephemeral
+    });
+    if (response?.ok && response.result?.ephemeral_message_id) {
+      meta.ephemeralMessages = meta.ephemeralMessages || {};
+      meta.ephemeralMessages[playerId] = response.result.ephemeral_message_id;
       await state.storage.put("telegram_board",meta);
     }
   }
+  return response;
 }
 
-async function telegramRefreshAllPrivateHands(env: Env, state: DurableObjectState, room: any, game?: any) {
+async function telegramRefreshAllGroupHands(env: Env, state: DurableObjectState, room:any, game:any, actorId?:string, callbackQueryId?:string) {
   if (!game) return;
-  const meta = await telegramGetBoardMeta(state);
-  if (!meta) return;
   for (const p of room.players || []) {
-    try { await telegramUpsertPrivateHand(env,state,room,game,p.id); } catch {}
+    try {
+      await telegramUpsertGroupHand(env,state,room,game,p.id,p.id===actorId ? callbackQueryId : undefined);
+    } catch {}
   }
 }
 
@@ -1813,6 +1916,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         action==="cancel" ? "cancel_room" :
         action==="close" ? "close_room" :
         action==="pv" ? "pv" :
+        action==="hand" ? "show_hand" :
         action==="x" ? "noop" : action;
       const query = new URLSearchParams({
         userId:String(q.from.id),
