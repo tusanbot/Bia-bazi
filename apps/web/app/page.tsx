@@ -11,7 +11,8 @@ import {
   telegramChatType,
   telegramStartParam,
   telegramUser,
-  waitForTelegram
+  waitForTelegram,
+  ensureTelegramAuth
 } from "../lib/telegram";
 
 export default function Home() {
