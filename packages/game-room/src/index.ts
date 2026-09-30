@@ -74,7 +74,7 @@ export class GameRoom {
     }
 
     const occupied = new Set(this.state.players.map(p => p.seat));
-    const seat = Array.from({ length: this.state.config.playerCount }, (_, i) => i).find(i => !occupied.has(i));
+    const seat = Array.from({ length: 4 }, (_, i) => i).find(i => !occupied.has(i));
     if (seat === undefined) throw new Error("No empty seat is available");
     this.state.players.push({ ...player, seat, joinedAt: now });
     return this.getState();
@@ -101,7 +101,7 @@ export class GameRoom {
 
   setPlayerSeat(playerId: string, seat: number): GameRoomState {
     if (this.state.status !== "waiting") throw new Error("Seats can only be changed before the game starts");
-    if (!Number.isInteger(seat) || seat < 0 || seat >= this.state.config.playerCount) throw new Error("Invalid seat");
+    if (!Number.isInteger(seat) || seat < 0 || seat > 3) throw new Error("Invalid seat");
     const player = this.state.players.find(p => p.id === playerId);
     if (!player) throw new Error("Player is not in the room");
     const occupant = this.state.players.find(p => p.seat === seat && p.id !== playerId);
