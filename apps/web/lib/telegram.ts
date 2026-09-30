@@ -18,7 +18,7 @@ type TelegramWebApp = {
   openTelegramLink?: (url: string) => void;
 };
 
-let cachedInitData = "";
+const telegramAuthCache: { initData: string } = { initData: "" };
 
 declare global {
   interface Window {
@@ -27,11 +27,11 @@ declare global {
 }
 
 function rawTelegramInitData(): string {
-  if (typeof window === "undefined") return "";
+  if (typeof window === "undefined") return telegramAuthCache.initData;
 
   const appInitData = window.Telegram?.WebApp?.initData ?? "";
   if (appInitData) {
-    cachedInitData = appInitData;
+    telegramAuthCache.initData = appInitData;
     return appInitData;
   }
 
@@ -45,12 +45,12 @@ function rawTelegramInitData(): string {
     const params = new URLSearchParams(source);
     const value = params.get("tgWebAppData");
     if (value) {
-      cachedInitData = value;
+      telegramAuthCache.initData = value;
       return value;
     }
   }
 
-  return cachedInitData;
+  return telegramAuthCache.initData;
 }
 
 function rawTelegramStartParam(): string {
@@ -91,12 +91,9 @@ export function telegramInitData(): string {
 }
 
 export function telegramUser(): TelegramUser | null {
-  // initDataUnsafe.user is display metadata only. It is NOT an authentication
-  // credential and must never make the UI think the user is authenticated.
-  // The server verifies the signed initData, so only expose a user when that
-  // signed payload is actually present.
-  const initData = telegramInitData();
-  return userFromInitData(initData);
+  // initDataUnsafe.user is display metadata only. It is not an authentication
+  // credential. Only expose a user parsed from signed initData.
+  return userFromInitData(telegramInitData());
 }
 
 export type TelegramAuthDiagnostics = {
@@ -201,6 +198,8 @@ export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp 
 }
 
 export async function waitForTelegramInitData(timeoutMs = 8000): Promise<string> {
+  if (typeof window === "undefined") return "";
+
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
