@@ -1904,7 +1904,7 @@ function miniCardLabel(card:any) {
 function miniRoomText(room:any, game:any) {
   const title=miniGameTitle(room.config.gameId);
   const players=(room.players||[]).map((p:any)=>`${p.displayName||"بازیکن"}: <b>${game?.scores?.[p.id]??0}</b>`);
-  const lines=[`<b>${title}</b>","━━━━━━━━━━━━━━",`👥 ${players.join("   ·   ")}`];
+  const lines=[`<b>${title}</b>`,"━━━━━━━━━━━━━━",`👥 ${players.join("   ·   ")}`];
   if (!game) { lines.push(`بازیکنان: <b>${room.players?.length||0}/${room.config.playerCount}</b>`,"برای ورود، دکمه ورود را بزنید."); return lines.join("\n\n"); }
   if (game.turnPlayerId) lines.push(`▶️ نوبت: <b>${game.players.find((p:any)=>p.id===game.turnPlayerId)?.displayName||"بازیکن"}</b>`);
   if (room.config.gameId==="haft_khabis") {
@@ -2488,7 +2488,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     if (command === "/help") {
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
         chat_id: message.chat.id,
-        text: "راهنمای بیا بازی\n\n• بازی‌ها داخل Mini App اجرا می‌شوند.\n• نتیجه هر بازی ثبت می‌شود.\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\n• برای ساخت بازی حکم در گروه، /hokm را ارسال کنید.\n• برای مشاهده آمار خودتان، /profile را بزنید.\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.\n• در گروه هم می‌توانید /rank، /rank hokm یا /rank scala را بزنید.",
+        text: "راهنمای بیا بازی\n\n• بازی‌ها داخل Mini App اجرا می‌شوند.\n• نتیجه هر بازی ثبت می‌شود.\n• امتیاز، رتبه، برد و رکورد در پروفایل ذخیره می‌شوند.\n• /hokm — حکم\n• /scala — اسکالا کوآرانتا\n• /shelem — شلم\n• /haft — هفت خبیث\n• /4card — چهاربرگ\n• برای مشاهده آمار خودتان، /profile را بزنید.\n• برای دیدن جدول رتبه‌بندی، /rank را بزنید.\n• در گروه هم می‌توانید /rank، /rank hokm یا /rank scala را بزنید.",
         disable_web_page_preview: true
       });
       return Response.json({ ok: true });
