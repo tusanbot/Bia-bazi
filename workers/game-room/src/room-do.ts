@@ -1095,8 +1095,6 @@ export class GameRoomDurableObject {
                 await this.recordFinalResult(this.game);
                 await this.notifyGroupResult(this.game);
                 await this.state.storage.deleteAlarm();
-              } else {
-                this.game=startNextHand(this.game);
               }
             }
           } else if (actionName === "finish") {
@@ -1119,8 +1117,6 @@ export class GameRoomDurableObject {
               await this.recordFinalResult(this.game);
               await this.notifyGroupResult(this.game);
               await this.state.storage.deleteAlarm();
-            } else {
-              this.game=startNextHand(this.game);
             }
           } else if (actionName === "next") {
             if (!this.game) throw new Error("بازی شروع نشده است");
@@ -1514,7 +1510,8 @@ export class GameRoomDurableObject {
               await this.notifyGroupResult(this.game);
             }
           }
-          await this.scheduleAutoPlay();
+          if (this.game.phase === "playing") await this.scheduleAutoPlay();
+          else await this.state.storage.deleteAlarm();
           break;
 
         case "finish_hand":
