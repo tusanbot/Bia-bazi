@@ -1079,6 +1079,11 @@ export class GameRoomDurableObject {
             if (!this.game) throw new Error("بازی شروع نشده است");
             this.game=drawTwo(this.game,userId,arg==="1");
           } else if (actionName === "show_hand") {
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta?.sortMenus?.[userId]) {
+              delete meta.sortMenus[userId];
+              await this.state.storage.put("telegram_board", meta);
+            }
             // Render the caller's private hand as an ephemeral message inside the group.
           } else if (actionName === "pv") {
             // Refresh only; no game mutation.
@@ -1874,7 +1879,6 @@ function telegramHandKeyboard(room:any, game:any, playerId:string, selection:str
       [{text:"♠️ پیک",callback_data:`h|${room.id}|t|spades`},{text:"♥️ دل",callback_data:`h|${room.id}|t|hearts`}],
       [{text:"♦️ خشت",callback_data:`h|${room.id}|t|diamonds`},{text:"♣️ گشنیز",callback_data:`h|${room.id}|t|clubs`}]
     );
-    rows.push([{text:"🃏 دست کامل شما",callback_data:`h|${room.id}|hand`}]);
     for (let i=0;i<hand.length;i+=3) rows.push(hand.slice(i,i+3).map((card:any)=>({
       text: telegramCardLabel(card),
       callback_data:`h|${room.id}|hand|${card.id}`
@@ -1900,7 +1904,6 @@ function telegramHandKeyboard(room:any, game:any, playerId:string, selection:str
       callback_data:`h|${room.id}|p|${card.id}`
     })));
   } else {
-    rows.push([{text:"🃏 دست کامل شما",callback_data:`h|${room.id}|hand`}]);
     for (let i=0;i<hand.length;i+=3) rows.push(hand.slice(i,i+3).map((card:any)=>({
       text: telegramCardLabel(card),
       callback_data:`h|${room.id}|hand|${card.id}`
