@@ -65,7 +65,7 @@ export default function Home() {
 
         fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-telegram-init-data": initData },
           body: JSON.stringify({
             type: "join",
             initData,
@@ -105,7 +105,7 @@ export default function Home() {
 
       fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
         body: JSON.stringify({
           type: "create_or_join_group",
           gameId: "hokm",
@@ -144,7 +144,7 @@ export default function Home() {
       const initData = await ensureTelegramAuth();
       const res = await fetch(`/api/room?room=${roomId}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-telegram-init-data": initData },
         body: JSON.stringify({
           type: "create",
           gameId: game,
