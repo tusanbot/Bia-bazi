@@ -1858,7 +1858,11 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     const userName = botUserName(message.from);
 
     if (command === "/start") {
-      const homeLink = `https://t.me/${username}?startapp=home`;
+      // Use a real Web App button in private chat instead of a normal t.me URL.
+      // This guarantees Telegram opens the page as a Mini App and supplies
+      // Telegram.WebApp.initData to the client. A normal URL only opens the
+      // Main Mini App when it has been configured in BotFather.
+      const webAppUrl = new URL("/", request.url).toString();
       const gamesLink = `https://t.me/${username}?startapp=games`;
       const addGroupLink = `https://t.me/${username}?startgroup=hokm`;
       await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
@@ -1881,7 +1885,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         ].join("\n"),
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🎮 ورود به بیا بازی", url: homeLink }],
+            [{ text: "🎮 ورود به بیا بازی", web_app: { url: webAppUrl } }],
             [{ text: "🃏 بازی‌ها و آموزش", url: gamesLink }],
             [{ text: "👥 افزودن به گروه", url: addGroupLink }]
           ]
