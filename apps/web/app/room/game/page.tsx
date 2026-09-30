@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { telegramInitData,
-  initTelegram, telegramUser, waitForTelegram } from "../../../lib/telegram";
+  initTelegram, telegramUser, waitForTelegram, ensureTelegramAuth } from "../../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type Suit = "spades" | "hearts" | "diamonds" | "clubs";
