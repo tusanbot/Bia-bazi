@@ -483,9 +483,30 @@ export class GameRoomDurableObject {
   private async scheduleAutoPlay() {
     if (!this.room || !this.game) return;
     const config = this.room.getState().config;
-    if (!config.autoPlayEnabled || this.room.getState().status !== "playing" || this.game.phase !== "playing") return;
+    if (!config.autoPlayEnabled || this.room.getState().status !== "playing") {
+      await this.state.storage.deleteAlarm();
+      return;
+    }
     const delay = Math.max(5, Math.min(60, config.autoPlayDelaySeconds ?? 10));
     await this.state.storage.setAlarm(Date.now() + delay * 1000);
+  }
+
+  private chooseAutoHokm(game: HokmState): Suit {
+    const hand = game.hands[game.hokmPlayerId] ?? [];
+    const suits: Suit[] = ["spades", "hearts", "diamonds", "clubs"];
+    return suits.sort((a,b) => {
+      const score = (s: Suit) => hand.filter(c => c.suit === s).reduce((sum,c) => sum + Number(c.rank || 0), 0);
+      return score(b) - score(a);
+    })[0];
+  }
+
+  private chooseAutoDiscard(game: HokmState, playerId: string) {
+    const required = playerId === game.hokmPlayerId ? 3 : 2;
+    return (game.hands[playerId] ?? [])
+      .slice()
+      .sort((a,b) => Number(a.rank || 0) - Number(b.rank || 0))
+      .slice(0, required)
+      .map(c => c.id);
   }
 
   private chooseAutoPlayCard(game: HokmState, playerId: string) {
@@ -496,58 +517,77 @@ export class GameRoomDurableObject {
     const variant = getHokmVariant(game.rules.variantId);
     const winnerOf = (card: typeof legal[number]) => trickWinner([...game.trick, { playerId, card }], game.hokm, variant.reversedRanks) === playerId;
     const winning = legal.filter(winnerOf);
-    if (winning.length) {
-      return winning.sort((a, b) => a.rank - b.rank)[0];
-    }
-    return legal.slice().sort((a, b) => a.rank - b.rank)[0];
+    if (winning.length) return winning.sort((a,b) => a.rank - b.rank)[0];
+    return legal.slice().sort((a,b) => a.rank - b.rank)[0];
   }
 
   async alarm() {
     await this.load();
     if (!this.room || !this.game) return;
-    const room = this.room.getState();
-    if (!room.config.autoPlayEnabled || room.status !== "playing") return;
 
-    if (this.game.phase === "hand_finished") {
-      this.game = startNextHand(this.game);
-      await this.save();
-      await this.scheduleAutoPlay();
+    const room = this.room.getState();
+    if (!room.config.autoPlayEnabled || room.status !== "playing") {
+      await this.state.storage.deleteAlarm();
       return;
     }
 
-    if (this.game.phase !== "playing") return;
+    try {
+      if (this.game.phase === "select_hokm") {
+        const suit = this.chooseAutoHokm(this.game);
+        this.game = chooseHokm(this.game, this.game.hokmPlayerId, suit);
+      } else if (this.game.phase === "build_two_player_hand") {
+        const build = this.game.twoPlayerBuild;
+        const playerId = build?.currentPlayer;
+        if (!playerId) return;
+        if (build.phase === "discard") {
+          this.game = discardTwo(this.game, playerId, this.chooseAutoDiscard(this.game, playerId));
+        } else if (build.phase === "draw") {
+          this.game = drawTwo(this.game, playerId, true);
+        }
+      } else if (this.game.phase === "hand_finished") {
+        this.game = finishHand(this.game);
+        this.hokmHandHistory.push({
+          hand: this.game.handsCompleted,
+          hokmPlayerId: this.game.hokmPlayerId,
+          hokm: this.game.hokm,
+          winnerIds: [...this.game.handWinnerIds],
+          points: { ...this.game.handPoints },
+          tricks: { ...this.game.tricksWon },
+          scores: { ...this.game.scores }
+        });
 
-    const playerId = this.game.turnPlayerId;
-    const card = this.chooseAutoPlayCard(this.game, playerId);
-    this.game = playCard(this.game, playerId, card.id);
-
-    if (this.game.phase === "hand_finished") {
-      this.game = finishHand(this.game);
-      this.hokmHandHistory.push({
-        hand: this.game.handsCompleted,
-        hokmPlayerId: this.game.hokmPlayerId,
-        hokm: this.game.hokm,
-        winnerIds: [...this.game.handWinnerIds],
-        points: { ...this.game.handPoints },
-        tricks: { ...this.game.tricksWon },
-        scores: { ...this.game.scores }
-      });
-
-      if (this.game.phase === "game_finished") {
-        this.room.finish();
-        await this.persistRoom();
-        await this.persistGameResult(this.game);
-        await this.recordFinalResult(this.game);
-        await this.notifyGroupResult(this.game);
+        if (this.game.phase === "game_finished") {
+          this.room.finish();
+          await this.persistRoom();
+          await this.persistGameResult(this.game);
+          await this.recordFinalResult(this.game);
+          await this.notifyGroupResult(this.game);
+          await this.state.storage.deleteAlarm();
+        } else {
+          this.game = startNextHand(this.game);
+        }
+      } else if (this.game.phase === "playing") {
+        const playerId = this.game.turnPlayerId;
+        const card = this.chooseAutoPlayCard(this.game, playerId);
+        this.game = playCard(this.game, playerId, card.id);
       } else {
-        await this.state.storage.setAlarm(Date.now() + 1000);
+        await this.state.storage.deleteAlarm();
+        return;
       }
-    } else {
-      await this.scheduleAutoPlay();
-    }
 
-    await this.save();
-    await this.syncRegistry();
+      await this.save();
+      await this.syncRegistry();
+
+      if (this.room.getState().status === "playing" && this.game && this.game.phase !== "game_finished") {
+        await telegramEditBoard(this.env, this.state, this.room.getState(), this.game);
+        await telegramRefreshAllGroupHands(this.env, this.state, this.room.getState(), this.game);
+        await this.scheduleAutoPlay();
+      }
+    } catch (error) {
+      // Never leave a Durable Object alarm spinning on an invalid game state.
+      await this.state.storage.deleteAlarm();
+      console.error("[AUTO PLAY]", error instanceof Error ? error.message : error);
+    }
   }
 
   private async save() {
