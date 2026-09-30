@@ -27,9 +27,12 @@ declare global {
 function rawTelegramInitData(): string {
   if (typeof window === "undefined") return "";
 
-  // Telegram's WebApp bridge normally exposes this as WebApp.initData.
-  // Some Android/iOS clients can expose the bridge a little later; the
-  // original launch payload is also present in the URL fragment.
+  const appInitData = window.Telegram?.WebApp?.initData ?? "";
+  if (appInitData) {
+    cachedInitData = appInitData;
+    return appInitData;
+  }
+
   const sources = [
     window.location.hash.replace(/^#/, ""),
     window.location.search.replace(/^\?/, "")
@@ -39,10 +42,13 @@ function rawTelegramInitData(): string {
     if (!source) continue;
     const params = new URLSearchParams(source);
     const value = params.get("tgWebAppData");
-    if (value) return value;
+    if (value) {
+      cachedInitData = value;
+      return value;
+    }
   }
 
-  return "";
+  return cachedInitData;
 }
 
 function rawTelegramStartParam(): string {
@@ -79,7 +85,7 @@ export function telegramWebApp(): TelegramWebApp | null {
 }
 
 export function telegramInitData(): string {
-  return telegramWebApp()?.initData || rawTelegramInitData();
+  return rawTelegramInitData();
 }
 
 export function telegramUser(): TelegramUser | null {
@@ -163,18 +169,20 @@ export function telegramChatType(): string {
   return telegramWebApp()?.initDataUnsafe?.chat_type ?? "";
 }
 
-export function telegramHeaders(): HeadersInit {
-  const initData = telegramInitData();
-  return initData ? { "x-telegram-init-data": initData } : {};
+export function telegramHeaders(initData?: string): HeadersInit {
+  const value = initData || telegramInitData();
+  return value ? { "x-telegram-init-data": value } : {};
 }
 
 export function initTelegram() {
   const app = telegramWebApp();
   app?.ready?.();
   app?.expand?.();
+  rawTelegramInitData();
 }
 
 export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp | null> {
+  if (typeof window === "undefined") return null;
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -182,16 +190,15 @@ export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp 
     if (app) {
       app.ready?.();
       app.expand?.();
-      if (app.initData || rawTelegramInitData()) return app;
     }
-    if (rawTelegramInitData()) return app;
+    if (telegramInitData()) return app;
     await new Promise(resolve => window.setTimeout(resolve, 100));
   }
 
   return telegramWebApp();
 }
 
-export async function waitForTelegramInitData(timeoutMs = 6000): Promise<string> {
+export async function waitForTelegramInitData(timeoutMs = 8000): Promise<string> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
