@@ -30,9 +30,11 @@ export default function Home() {
     let cancelled = false;
     initTelegram();
 
-    void waitForTelegram().then(app => {
+    void waitForTelegram()
+      .then(async () => {
       if (cancelled) return;
-      const currentUser = app?.initDataUnsafe?.user ?? telegramUser();
+      await ensureTelegramAuth();
+      const currentUser = telegramUser();
       const startParam = telegramStartParam();
       const chatInstance = telegramChatInstance();
       const chatType = telegramChatType();
