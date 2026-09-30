@@ -563,13 +563,31 @@ export class GameRoomDurableObject {
           await this.recordFinalResult(this.game);
           await this.notifyGroupResult(this.game);
           await this.state.storage.deleteAlarm();
-        } else {
-          this.game = startNextHand(this.game);
         }
       } else if (this.game.phase === "playing") {
         const playerId = this.game.turnPlayerId;
         const card = this.chooseAutoPlayCard(this.game, playerId);
         this.game = playCard(this.game, playerId, card.id);
+        if (this.game.phase === "hand_finished") {
+          this.game = finishHand(this.game);
+          this.hokmHandHistory.push({
+            hand: this.game.handsCompleted,
+            hokmPlayerId: this.game.hokmPlayerId,
+            hokm: this.game.hokm,
+            winnerIds: [...this.game.handWinnerIds],
+            points: { ...this.game.handPoints },
+            tricks: { ...this.game.tricksWon },
+            scores: { ...this.game.scores }
+          });
+          if (this.game.phase === "game_finished") {
+            this.room.finish();
+            await this.persistRoom();
+            await this.persistGameResult(this.game);
+            await this.recordFinalResult(this.game);
+            await this.notifyGroupResult(this.game);
+            await this.state.storage.deleteAlarm();
+          }
+        }
       } else {
         await this.state.storage.deleteAlarm();
         return;
@@ -968,6 +986,28 @@ export class GameRoomDurableObject {
               delete meta.managementUserId;
               await this.state.storage.put("telegram_board", meta);
             }
+          } else if (actionName === "set_variant") {
+            if (arg === "menu") {
+              if (hostId !== userId) throw new Error("فقط میزبان می‌تواند نوع حکم را تغییر دهد");
+              const meta = await telegramGetBoardMeta(this.state);
+              if (meta) {
+                meta.managementUserId = "variant:" + userId;
+                await this.state.storage.put("telegram_board", meta);
+              }
+            } else {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند نوع حکم را تغییر دهد");
+            if (this.room.getState().status !== "waiting") throw new Error("نوع حکم فقط قبل از شروع بازی قابل تغییر است");
+            const variantId = arg as HokmVariantId;
+            if (this.room.getState().config.gameId !== "hokm") throw new Error("این تنظیم فقط برای حکم است");
+            const roomState = this.room.getState();
+            roomState.config.variantId = getHokmVariant(variantId).id;
+            this.room = new GameRoom(roomState);
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta) {
+              meta.managementUserId = userId;
+              await this.state.storage.put("telegram_board", meta);
+            }
+            }
           } else if (actionName === "set_target_score") {
             if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد دورها را تغییر دهد");
             const score = Number(arg);
@@ -1084,6 +1124,7 @@ export class GameRoomDurableObject {
             }
           } else if (actionName === "next") {
             if (!this.game) throw new Error("بازی شروع نشده است");
+            if (this.game.phase !== "hand_finished") throw new Error("دست بعد هنوز قابل شروع نیست");
             this.game=startNextHand(this.game);
           } else if (actionName === "sort_menu") {
             const meta = await telegramGetBoardMeta(this.state);
@@ -1759,7 +1800,11 @@ function telegramRoomText(room: any, game?: any) {
       ).join("   ·   "));
     }
     lines.push(`🎯 حکم: <b>${game.hokm ? telegramSuitLabel(game.hokm) : "انتخاب نشده"}</b>   ·   🧩 ${variant}`);
-    lines.push(`📘 دور ${(game.handsCompleted ?? 0) + 1}   ·   دست ${(game.tricksWon ? Math.max(0, ...Object.values(game.tricksWon as Record<string,number>)) : 0) + 1}/7`);
+    const trickSummary = (game.players || []).map((p:any) =>
+      `${telegramTeamEmoji(room,p.id)} ${p.displayName || "بازیکن"}: <b>${game.tricksWon?.[p.id] ?? 0}</b> تریک`
+    );
+    lines.push(`📘 دور ${game.handsCompleted ?? 0}   ·   تریک‌های این دست`);
+    lines.push(trickSummary.join("   ·   "));
     if (game.phase === "select_hokm") lines.push(`👑 حاکم: ${players.find((p:any)=>p.id===game.hokmPlayerId)?.displayName || "بازیکن"} — انتخاب حکم`);
     else if (game.phase === "build_two_player_hand") {
       const b = game.twoPlayerBuild;
@@ -1768,8 +1813,16 @@ function telegramRoomText(room: any, game?: any) {
         ? `🎴 ${current} بین دو کارت انتخاب می‌کند`
         : `🗑 ${current} در حال انتخاب کارت‌های حذف‌شدنی است`);
     } else if (game.phase === "playing") lines.push(`▶️ نوبت: ${players.find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"}`);
-    else if (game.phase === "hand_finished") lines.push("🏁 این دست تمام شد؛ در حال ثبت خودکار نتیجه…");
-    else if (game.phase === "game_finished") lines.push("🏆 <b>بازی به پایان رسید و نتیجه ثبت شد.</b>");
+    else if (game.phase === "hand_finished") {
+      const winners = (game.handWinnerIds || []).map((id:string) => game.players.find((p:any)=>p.id===id)?.displayName || "بازیکن").join(" و ");
+      const handPoints = (game.handPoints || {});
+      lines.push(
+        "🏁 <b>نتیجه این دست</b>",
+        `برنده: <b>${winners || "مشخص نیست"}</b>`,
+        `امتیاز این دست: ${(game.players || []).map((p:any)=>`${p.displayName || "بازیکن"}: ${handPoints[p.id] ?? 0}`).join(" · ")}`,
+        "▶️ برای شروع دست بعد، یکی از بازیکنان «دست بعد» را انتخاب کند."
+      );
+    } else if (game.phase === "game_finished") lines.push("🏆 <b>بازی به پایان رسید و نتیجه ثبت شد.</b>");
 
     const trick = Array.isArray(game.trick) && game.trick.length ? game.trick : (game.lastCompletedTrick || []);
     if (trick.length) {
@@ -1798,12 +1851,26 @@ function telegramRoomText(room: any, game?: any) {
 function telegramBoardKeyboard(room: any, game?: any, managementUserId?: string) {
   if (managementUserId && ["waiting","playing"].includes(room.status)) {
     const cfg = room.config || {};
+    if (managementUserId.startsWith("variant:") && room.status === "waiting") {
+      const current = (cfg.variantId as HokmVariantId) || "standard";
+      const variants: HokmVariantId[] = ["standard","saras","naras","tak_bresh"];
+      return {
+        inline_keyboard: [
+          ...variants.map(id => [{
+            text: (current === id ? "✅ " : "") + getHokmVariant(id).title,
+            callback_data: `h|${room.id}|v|${id}`
+          }]),
+          [{text:"↩️ بازگشت",callback_data:`h|${room.id}|b`}]
+        ]
+      };
+    }
     const auto = Boolean(cfg.autoPlayEnabled);
     const delay = cfg.autoPlayDelaySeconds ?? 10;
     const rows:any[][] = [
       [{text:"🎯 دور: " + (cfg.targetScore ?? 7), callback_data:"h|"+room.id+"|m"}],
       ...(room.status === "waiting" ? [[1,3,5,7].map(score => ({text:(cfg.targetScore===score?"✅ ":"")+" "+score+" دور",callback_data:"h|"+room.id+"|r|"+score}))] : []),
       ...(room.status === "waiting" ? [[{text:"👥 "+cfg.playerCount+" نفره",callback_data:"h|"+room.id+"|m"}]] : []),
+      ...(room.status === "waiting" ? [[{text:"🃏 نوع حکم: "+(getHokmVariant((cfg.variantId as HokmVariantId)||"standard").title),callback_data:"h|"+room.id+"|v|menu"}]] : []),
       ...(room.status === "waiting" ? [[2,3,4].filter((n:number)=>n>=cfg.minPlayers && n<=cfg.maxPlayers).map((n:number)=>({text:(cfg.playerCount===n?"✅ ":"")+" "+n+" نفره",callback_data:"h|"+room.id+"|mode|"+n}))] : []),
       ...(room.status === "waiting" ? [[{text:"🤖 بازی خودکار: "+(auto?"روشن":"خاموش"),callback_data:"h|"+room.id+"|a|"+(auto?"0":"1")}]] : []),
       ...(room.status === "waiting" ? [[5,10,15,20,30,45,60].map(seconds => ({text:(delay===seconds?"✅ ":"")+seconds+"ث",callback_data:"h|"+room.id+"|ad|"+seconds}))] : []),
@@ -1842,6 +1909,9 @@ function telegramBoardKeyboard(room: any, game?: any, managementUserId?: string)
 
   if (!game && room.status === "waiting") {
     keyboard.push([{ text: "▶️ شروع بازی", callback_data: `h|${room.id}|start` }, { text: "🚪 خروج", callback_data: `h|${room.id}|leave` }]);
+    keyboard.push([{ text: "⚙️ مدیریت بازی", callback_data: `h|${room.id}|m` }]);
+  } else if (game?.phase === "hand_finished") {
+    keyboard.push([{ text: "▶️ دست بعد", callback_data: `h|${room.id}|n` }]);
     keyboard.push([{ text: "⚙️ مدیریت بازی", callback_data: `h|${room.id}|m` }]);
   } else if (game?.phase === "game_finished" || room.status === "finished" || room.status === "cancelled" || room.status === "closed") {
     keyboard.push([{ text: "🔄 شروع دوباره", callback_data: `h|${room.id}|restart` }]);
@@ -1888,6 +1958,24 @@ function telegramHandView(room:any, game:any, playerId:string) {
     `🃏 تعداد کارت: <b>${hand.length}</b>`,
     `↕️ مرتب‌سازی: <b>${telegramSortLabel(sort)}</b>`
   ];
+  if (game?.phase === "hand_finished") {
+    const winners = (game.handWinnerIds || []).map((id:string) => (room.players || []).find((p:any)=>p.id===id)?.displayName || "بازیکن").join(" و ");
+    lines.push(
+      "",
+      "🏁 <b>نتیجه دست</b>",
+      `برنده: <b>${winners || "مشخص نیست"}</b>`,
+      `تریک‌ها: ${(room.players || []).map((p:any)=>`${p.displayName || "بازیکن"}: ${game.tricksWon?.[p.id] ?? 0}`).join(" · ")}`,
+      `امتیاز این دست: ${(room.players || []).map((p:any)=>`${p.displayName || "بازیکن"}: ${game.handPoints?.[p.id] ?? 0}`).join(" · ")}`,
+      `امتیاز کل: ${(room.players || []).map((p:any)=>`${p.displayName || "بازیکن"}: ${game.scores?.[p.id] ?? 0}`).join(" · ")}`,
+      "▶️ برای ادامه، یکی از بازیکنان «دست بعد» را انتخاب کند."
+    );
+    return {lines, hand: [], selection, sort};
+  }
+  if (game?.phase === "game_finished") {
+    const ranking = (room.players || []).map((p:any)=>({name:p.displayName || "بازیکن",score:game.scores?.[p.id] ?? 0})).sort((a:any,b:any)=>b.score-a.score);
+    lines.push("", "🏆 <b>نتیجه نهایی</b>", ...ranking.map((x:any,i:number)=>`${i+1}. ${x.name} — <b>${x.score}</b>`));
+    return {lines, hand: [], selection, sort};
+  }
   const build = game?.twoPlayerBuild;
   if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) {
     lines.push("", "👑 شما حاکم هستید؛ خال حکم را انتخاب کنید. دست کامل شما پایین نمایش داده می‌شود.");
@@ -1909,6 +1997,7 @@ function telegramHandView(room:any, game:any, playerId:string) {
 }
 
 function telegramHandKeyboard(room:any, game:any, playerId:string, selection:string[]) {
+  if (game?.phase === "hand_finished" || game?.phase === "game_finished") return {inline_keyboard: []};
   const rawHand = game?.hands?.[playerId] || [];
   const sort = (game?._telegramHandSort || "combined") as "rank" | "suit" | "combined";
   const hand = telegramSortedHand(rawHand, sort);
@@ -2069,6 +2158,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         action==="start" ? "start" :
         action==="leave" ? "leave" :
         action==="m" ? "manage" :
+        action==="v" ? "set_variant" :
         action==="b" ? "manage_back" :
         action==="r" ? "set_target_score" :
         action==="a" ? "set_auto_play" :
