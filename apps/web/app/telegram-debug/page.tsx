@@ -30,16 +30,16 @@ export default function TelegramDebugPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const rows: Array<[string, string | number | boolean]> = diagnostics
+  const rows: Array<{ label: string; value: string | number | boolean }> = diagnostics
     ? [
-        ["window.Telegram", diagnostics.hasTelegramObject],
-        ["Telegram.WebApp", diagnostics.hasWebApp],
-        ["initData", diagnostics.hasInitData],
-        ["initData length", diagnostics.initDataLength],
-        ["initDataUnsafe.user", diagnostics.hasUnsafeUser],
-        ["raw tgWebAppData", diagnostics.hasRawInitData],
-        ["start_param", diagnostics.hasStartParam],
-        ["host", diagnostics.host]
+        { label: "window.Telegram", value: diagnostics.hasTelegramObject },
+        { label: "Telegram.WebApp", value: diagnostics.hasWebApp },
+        { label: "initData", value: diagnostics.hasInitData },
+        { label: "initData length", value: diagnostics.initDataLength },
+        { label: "initDataUnsafe.user", value: diagnostics.hasUnsafeUser },
+        { label: "raw tgWebAppData", value: diagnostics.hasRawInitData },
+        { label: "start_param", value: diagnostics.hasStartParam },
+        { label: "host", value: diagnostics.host }
       ]
     : [];
 
@@ -74,11 +74,11 @@ export default function TelegramDebugPage() {
         </div>
 
         <div className="active-rooms">
-          {rows.map(([label, value]) => (
-            <div className="active-room" key={label}>
+          {rows.map((row) => (
+            <div className="active-room" key={row.label}>
               <div className="active-room-copy">
-                <strong>{label}</strong>
-                <span>{typeof value === "boolean" ? (value ? "بله" : "خیر") : String(value || "—")}</span>
+                <strong>{row.label}</strong>
+                <span>{typeof row.value === "boolean" ? (row.value ? "بله" : "خیر") : String(row.value || "—")}</span>
               </div>
             </div>
           ))}
