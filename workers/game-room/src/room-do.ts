@@ -742,7 +742,141 @@ export class GameRoomDurableObject {
   async fetch(request: Request): Promise<Response> {
     try {
       if (request.headers.get("x-room-health-check") === "1") {
-        if ((request.method === "POST" || request.method === "GET") && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
+  
+      await this.load();
+        return Response.json({ exists: Boolean(this.room), status: this.room?.getState().status ?? null });
+      }
+
+      const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
+
+      if (request.headers.get("x-admin-internal-token") && this.env.ADMIN_INTERNAL_TOKEN && request.headers.get("x-admin-internal-token") === this.env.ADMIN_INTERNAL_TOKEN) {
+        const adminUrl = new URL(request.url);
+        if (adminUrl.pathname === "/admin-room" && request.method === "POST") {
+          const body = await request.json() as { type?: string };
+          await this.load();
+          if (!this.room) return Response.json({ error: "Room does not exist" }, { status: 404 });
+          if (body.type === "cancel") this.room.cancel();
+          else if (body.type === "close") this.room.close();
+          else if (body.type === "delete") {
+            await this.syncRegistry();
+            await this.state.storage.deleteAll();
+            this.room = undefined;
+            this.game = undefined;
+            this.scalaGame = undefined;
+            this.miniGame = undefined;
+            return Response.json({ ok: true, deleted: true });
+          } else return Response.json({ error: "Unknown admin room action" }, { status: 400 });
+          await this.persistRoom();
+          await this.save();
+          await this.syncRegistry();
+          return Response.json({ ok: true, room: this.room.getState() });
+        }
+      }
+
+      const isRegistryRequest =
+        request.headers.get("x-room-registry-request") === "1" ||
+        request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN;
+
+      if (isRegistryRequest) {
+        if (request.method === "POST" && request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN) {
+          const body = await request.json<
+            | { type: "sync"; room: ActiveRoom | null; roomId: string }
+            | { type: "record_result"; result: GameResultRecord }
+          >();
+
+          if (body.type === "record_result") {
+            const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
+            const key = body.result.playerId;
+            const existing = stats[key] || {
+              playerId: key,
+              displayName: body.result.displayName,
+              gamesPlayed: 0,
+              wins: 0,
+              losses: 0,
+              draws: 0,
+              score: 0,
+              rating: 1000,
+              currentStreak: 0,
+              bestStreak: 0,
+              updatedAt: Date.now()
+            };
+            const resultKeys = (await this.state.storage.get<Record<string, true>>("recorded_results")) || {};
+            const resultKey = body.result.roomId + ":" + body.result.playerId;
+
+            if (!resultKeys[resultKey]) {
+              existing.displayName = body.result.displayName || existing.displayName;
+              existing.gamesPlayed += 1;
+              existing.score += body.result.scoreDelta;
+              existing.rating += body.result.won ? 10 : -5;
+
+              if (body.result.won) {
+                existing.wins += 1;
+                existing.currentStreak += 1;
+                existing.bestStreak = Math.max(existing.bestStreak, existing.currentStreak);
+              } else {
+                existing.losses += 1;
+                existing.currentStreak = 0;
+              }
+
+              existing.updatedAt = Date.now();
+              stats[key] = existing;
+              resultKeys[resultKey] = true;
+              await this.state.storage.put("player_stats", stats);
+              await this.state.storage.put("recorded_results", resultKeys);
+            }
+
+            return Response.json({ ok: true, stats: existing });
+          }
+
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          if (body.room) rooms[body.room.id] = body.room;
+          else delete rooms[body.roomId];
+          await this.state.storage.put("rooms", rooms);
+          return Response.json({ ok: true });
+        }
+
+        const initData = request.headers.get("x-telegram-init-data") || "";
+        await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
+
+        if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "ranking") {
+          const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
+          const ranking = Object.values(stats)
+            .sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.score - a.score)
+            .slice(0, 100);
+          return Response.json({ ranking });
+        }
+
+        if (request.method === "GET") {
+          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
+          const active = [] as ActiveRoom[];
+          for (const room of Object.values(rooms)) {
+            if (Date.now() - room.updatedAt >= 24 * 60 * 60 * 1000) {
+              delete rooms[room.id];
+              continue;
+            }
+            try {
+              const roomId = this.env.GAME_ROOM.idFromName(room.id);
+              const health = await this.env.GAME_ROOM.get(roomId).fetch("https://internal/health", { headers: { "x-room-health-check": "1" } });
+              const healthJson = await health.json() as { exists?: boolean; status?: string | null };
+              if (!healthJson.exists || !["waiting", "playing"].includes(healthJson.status || "")) {
+                delete rooms[room.id];
+                continue;
+              }
+              const cleanedRoom = { ...room, status: healthJson.status as ActiveRoom["status"], updatedAt: Date.now() };
+              active.push(cleanedRoom);
+              rooms[room.id] = cleanedRoom;
+            } catch {
+              delete rooms[room.id];
+            }
+          }
+          await this.state.storage.put("rooms", rooms);
+          active.sort((a, b) => b.updatedAt - a.updatedAt);
+          return Response.json({ rooms: active });
+        }
+
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      if ((request.method === "POST" || request.method === "GET") && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
         const internalUrl = new URL(request.url);
         if (internalUrl.pathname === "/telegram-bind") {
           const body = await request.json() as { chatId?: string; messageId?: number };
@@ -883,139 +1017,6 @@ export class GameRoomDurableObject {
         }
       }
 
-      await this.load();
-        return Response.json({ exists: Boolean(this.room), status: this.room?.getState().status ?? null });
-      }
-
-      const requestedRoomId = new URL(request.url).searchParams.get("room") || this.state.id.toString();
-
-      if (request.headers.get("x-admin-internal-token") && this.env.ADMIN_INTERNAL_TOKEN && request.headers.get("x-admin-internal-token") === this.env.ADMIN_INTERNAL_TOKEN) {
-        const adminUrl = new URL(request.url);
-        if (adminUrl.pathname === "/admin-room" && request.method === "POST") {
-          const body = await request.json() as { type?: string };
-          await this.load();
-          if (!this.room) return Response.json({ error: "Room does not exist" }, { status: 404 });
-          if (body.type === "cancel") this.room.cancel();
-          else if (body.type === "close") this.room.close();
-          else if (body.type === "delete") {
-            await this.syncRegistry();
-            await this.state.storage.deleteAll();
-            this.room = undefined;
-            this.game = undefined;
-            this.scalaGame = undefined;
-            this.miniGame = undefined;
-            return Response.json({ ok: true, deleted: true });
-          } else return Response.json({ error: "Unknown admin room action" }, { status: 400 });
-          await this.persistRoom();
-          await this.save();
-          await this.syncRegistry();
-          return Response.json({ ok: true, room: this.room.getState() });
-        }
-      }
-
-      const isRegistryRequest =
-        request.headers.get("x-room-registry-request") === "1" ||
-        request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN;
-
-      if (isRegistryRequest) {
-        if (request.method === "POST" && request.headers.get("x-room-registry-token") === this.env.TELEGRAM_BOT_TOKEN) {
-          const body = await request.json<
-            | { type: "sync"; room: ActiveRoom | null; roomId: string }
-            | { type: "record_result"; result: GameResultRecord }
-          >();
-
-          if (body.type === "record_result") {
-            const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
-            const key = body.result.playerId;
-            const existing = stats[key] || {
-              playerId: key,
-              displayName: body.result.displayName,
-              gamesPlayed: 0,
-              wins: 0,
-              losses: 0,
-              draws: 0,
-              score: 0,
-              rating: 1000,
-              currentStreak: 0,
-              bestStreak: 0,
-              updatedAt: Date.now()
-            };
-            const resultKeys = (await this.state.storage.get<Record<string, true>>("recorded_results")) || {};
-            const resultKey = body.result.roomId + ":" + body.result.playerId;
-
-            if (!resultKeys[resultKey]) {
-              existing.displayName = body.result.displayName || existing.displayName;
-              existing.gamesPlayed += 1;
-              existing.score += body.result.scoreDelta;
-              existing.rating += body.result.won ? 10 : -5;
-
-              if (body.result.won) {
-                existing.wins += 1;
-                existing.currentStreak += 1;
-                existing.bestStreak = Math.max(existing.bestStreak, existing.currentStreak);
-              } else {
-                existing.losses += 1;
-                existing.currentStreak = 0;
-              }
-
-              existing.updatedAt = Date.now();
-              stats[key] = existing;
-              resultKeys[resultKey] = true;
-              await this.state.storage.put("player_stats", stats);
-              await this.state.storage.put("recorded_results", resultKeys);
-            }
-
-            return Response.json({ ok: true, stats: existing });
-          }
-
-          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
-          if (body.room) rooms[body.room.id] = body.room;
-          else delete rooms[body.roomId];
-          await this.state.storage.put("rooms", rooms);
-          return Response.json({ ok: true });
-        }
-
-        const initData = request.headers.get("x-telegram-init-data") || "";
-        await verifyTelegramInitData(initData, this.env.TELEGRAM_BOT_TOKEN);
-
-        if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "ranking") {
-          const stats = (await this.state.storage.get<Record<string, PlayerStats>>("player_stats")) || {};
-          const ranking = Object.values(stats)
-            .sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.score - a.score)
-            .slice(0, 100);
-          return Response.json({ ranking });
-        }
-
-        if (request.method === "GET") {
-          const rooms = (await this.state.storage.get<Record<string, ActiveRoom>>("rooms")) || {};
-          const active = [] as ActiveRoom[];
-          for (const room of Object.values(rooms)) {
-            if (Date.now() - room.updatedAt >= 24 * 60 * 60 * 1000) {
-              delete rooms[room.id];
-              continue;
-            }
-            try {
-              const roomId = this.env.GAME_ROOM.idFromName(room.id);
-              const health = await this.env.GAME_ROOM.get(roomId).fetch("https://internal/health", { headers: { "x-room-health-check": "1" } });
-              const healthJson = await health.json() as { exists?: boolean; status?: string | null };
-              if (!healthJson.exists || !["waiting", "playing"].includes(healthJson.status || "")) {
-                delete rooms[room.id];
-                continue;
-              }
-              const cleanedRoom = { ...room, status: healthJson.status as ActiveRoom["status"], updatedAt: Date.now() };
-              active.push(cleanedRoom);
-              rooms[room.id] = cleanedRoom;
-            } catch {
-              delete rooms[room.id];
-            }
-          }
-          await this.state.storage.put("rooms", rooms);
-          active.sort((a, b) => b.updatedAt - a.updatedAt);
-          return Response.json({ rooms: active });
-        }
-
-        return Response.json({ error: "Not found" }, { status: 404 });
-      }
       await this.load();
 
       const action: Action = request.method === "GET"
