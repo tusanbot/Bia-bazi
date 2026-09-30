@@ -987,7 +987,11 @@ export class GameRoomDurableObject {
             } else if (type === "draw") {
               this.miniGame = applyMiniAction(this.miniGame, { type: "draw" }, userId);
             } else if (type === "capture") {
-              this.miniGame = applyMiniAction(this.miniGame, { type: "capture", cardId: parts[1], targets: selected }, userId);
+              const handIds = new Set((this.miniGame.hands?.[userId] || []).map((card:any)=>card.id));
+              const played = selected.find((id:string)=>handIds.has(id));
+              const targets = selected.filter((id:string)=>!handIds.has(id));
+              if (!played || !targets.length) throw new Error("یک کارت از دست و حداقل یک کارت از میز انتخاب کنید");
+              this.miniGame = applyMiniAction(this.miniGame, { type: "capture", cardId: played, targets }, userId);
               if (meta) delete meta.selections[userId];
             } else if (type === "sel") {
               if (!meta) throw new Error("اطلاعات انتخاب کارت در دسترس نیست");
@@ -1928,6 +1932,7 @@ function miniBoardKeyboard(room:any, game:any) {
   else if (room.config.gameId==="chahar_barg") rows.push([{text:"🃏 دست من",callback_data:`h|${room.id}|mh`}]);
   else if (room.config.gameId==="shelem") rows.push([{text:"🃏 دست من",callback_data:`h|${room.id}|mh`}]);
   else if (room.config.gameId==="scala_quaranta") rows.push([{text:"🃏 دست من",callback_data:`h|${room.id}|mh`},{text:"📥 کارت از دسته",callback_data:`h|${room.id}|sd`},{text:"🗑 از دورریز",callback_data:`h|${room.id}|sx`}]);
+  if (game.phase==="round_finished") rows.push([{text:"▶️ دور بعد",callback_data:`h|${room.id}|mn`}]);
   if (game.phase==="finished"||game.phase==="match_finished") rows.push([{text:"🔄 بازی دوباره",callback_data:`h|${room.id}|restart`}]);
   return {inline_keyboard:rows};
 }
@@ -1942,7 +1947,7 @@ async function telegramMiniHand(env:Env,state:DurableObjectState,room:any,game:a
   } else if(id==="chahar_barg") {
     rows.push(...hand.map((c:any)=>[{text:`${selected.includes(c.id)?"☑️ ":""}${miniCardLabel(c)}`,callback_data:`h|${room.id}|mc|${c.id}`}])); 
     rows.push([{text:"✅ ثبت گرفتن",callback_data:`h|${room.id}|mcap`}]);
-    if(game.table?.length) rows.push([{text:"ℹ️ کارت‌های میز: "+game.table.map((c:any)=>miniCardLabel(c)).join(" · "),callback_data:`h|${room.id}|noop`}]);
+    if(game.table?.length) for(const c of game.table) rows.push([{text:`${selected.includes(c.id)?"☑️ ":""}میز: ${miniCardLabel(c)}`,callback_data:`h|${room.id}|mct|${c.id}`}]);
   } else if(id==="shelem") {
     if(game.phase==="bidding") {
       const current=Number(game.bidValue||95);
@@ -2354,6 +2359,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         action==="md" ? "mini_action" :
         action==="mp" ? "mini_action" :
         action==="mc" ? "mini_action" :
+        action==="mct" ? "mini_action" :
         action==="mcap" ? "mini_action" :
         action==="mb" ? "mini_action" :
         action==="mt" ? "mini_action" :
@@ -2365,11 +2371,12 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         action==="sd" ? "mini_action" :
         action==="sx" ? "mini_action" :
         action==="sdsc" ? "mini_action" :
+        action==="mn" ? "mini_action" :
         action==="sort" ? "sort_hand" :
         action==="sort_menu" ? "sort_menu" :
         action==="x" ? "noop" : action;
       const miniMap:any = {
-        mh:"hand", md:"draw", mp:"play", mc:"sel_capture", mcap:"capture",
+        mh:"hand", md:"draw", mp:"play", mc:"sel_capture", mct:"sel_table", mcap:"capture",
         mb:"bid", mt:"talon", ms:"sel_discard4", m4:"discard4",
         ss:"scala_sel", sm:"scala_meld", sa:"scala_add", sd:"scala_deck",
         sx:"scala_discard", sdsc:"scala_discard_card"
@@ -2381,6 +2388,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         else if(action==="md") finalArg="draw";
         else if(action==="mp") finalArg="play:"+arg;
         else if(action==="mc") finalArg="sel:"+arg;
+        else if(action==="mct") finalArg="sel:"+arg;
         else if(action==="mcap") finalArg="capture";
         else if(action==="mb") finalArg="bid:"+arg;
         else if(action==="mt") finalArg="talon";
@@ -2392,6 +2400,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         else if(action==="sd") finalArg="scala_deck";
         else if(action==="sx") finalArg="scala_discard";
         else if(action==="sdsc") finalArg="scala_discard_card:"+arg;
+        else if(action==="mn") finalArg="scala_next";
       }
       const query = new URLSearchParams({
         userId:String(q.from.id),
