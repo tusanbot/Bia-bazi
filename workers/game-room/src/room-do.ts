@@ -2549,7 +2549,10 @@ async function handleTelegramWebhook(request: Request, env: Env) {
       "/haft": {id:"haft_khabis",count:4,name:"هفت خبیث"},
       "/haftkhabis": {id:"haft_khabis",count:4,name:"هفت خبیث"},
       "/chahar": {id:"chahar_barg",count:4,name:"چهاربرگ"},
-      "/chaharbarg": {id:"chahar_barg",count:4,name:"چهاربرگ"}
+      "/chaharbarg": {id:"chahar_barg",count:4,name:"چهاربرگ"},
+      "/4card": {id:"chahar_barg",count:4,name:"چهاربرگ"},
+      "/fourcard": {id:"chahar_barg",count:4,name:"چهاربرگ"},
+      "/haft_khabis": {id:"haft_khabis",count:4,name:"هفت خبیث"}
     };
     const requested = groupGames[command];
     if (requested) {
