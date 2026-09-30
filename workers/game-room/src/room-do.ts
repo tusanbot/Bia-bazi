@@ -886,7 +886,9 @@ export class GameRoomDurableObject {
             chatId: body.chatId,
             messageId: body.messageId,
             pvMessages: current?.pvMessages || {},
-            selections: current?.selections || {}
+            ephemeralMessages: current?.ephemeralMessages || {},
+            selections: current?.selections || {},
+            handSorts: current?.handSorts || {}
           } satisfies TelegramBoardMeta);
           return Response.json({ ok: true });
         }
@@ -989,7 +991,15 @@ export class GameRoomDurableObject {
           } else if (actionName === "next") {
             if (!this.game) throw new Error("بازی شروع نشده است");
             this.game=startNextHand(this.game);
-          } else if (actionName === "toggle_card") {
+          } else if (actionName === "sort_hand") {
+            const sort = arg as "rank" | "suit" | "combined";
+            if (!["rank", "suit", "combined"].includes(sort)) throw new Error("نوع مرتب‌سازی نامعتبر است");
+            const meta = await telegramGetBoardMeta(this.state);
+            if (!meta) throw new Error("Telegram board is not configured");
+            meta.handSorts = meta.handSorts || {};
+            meta.handSorts[userId] = sort;
+            await this.state.storage.put("telegram_board", meta);
+          }          } else if (actionName === "toggle_card") {
             const meta=await telegramGetBoardMeta(this.state);
             if(!meta) throw new Error("Telegram board is not configured");
             const selected=new Set(meta.selections[userId]||[]);
@@ -1051,7 +1061,7 @@ export class GameRoomDurableObject {
         }
         if (action.type === "create_group_room" && action.chatId) {
           const existing = await telegramGetBoardMeta(this.state);
-          await this.state.storage.put("telegram_board", existing || { chatId: action.chatId, messageId: 0, pvMessages: {}, ephemeralMessages: {}, selections: {} });
+          await this.state.storage.put("telegram_board", existing || { chatId: action.chatId, messageId: 0, pvMessages: {}, ephemeralMessages: {}, selections: {}, handSorts: {} });
           if (this.env.DB) {
             await this.env.DB.prepare("UPDATE game_rooms SET group_chat_id=? WHERE id=?").bind(Number(action.chatId), roomId).run().catch(()=>{});
           }
@@ -1573,6 +1583,7 @@ type TelegramBoardMeta = {
   pvMessages: Record<string, number>;
   ephemeralMessages?: Record<string, number>;
   selections: Record<string, string[]>;
+  handSorts?: Record<string, "rank" | "suit" | "combined">;
   managementUserId?: string;
 };
 
@@ -1598,6 +1609,20 @@ function telegramCardLabel(card: any) {
 
 function telegramSuitLabel(suit: string) {
   return ({spades:"♠️ پیک", hearts:"♥️ دل", diamonds:"♦️ خشت", clubs:"♣️ گشنیز"} as Record<string,string>)[suit] || suit;
+}
+
+function telegramSortLabel(sort: "rank" | "suit" | "combined") {
+  return ({rank:"رتبه", suit:"خال", combined:"خال + رتبه"} as Record<string,string>)[sort];
+}
+
+function telegramSortedHand(hand: any[], sort: "rank" | "suit" | "combined") {
+  const suitOrder: Record<string, number> = { spades: 0, hearts: 1, diamonds: 2, clubs: 3 };
+  const rankValue = (card: any) => Number(card?.rank ?? 0);
+  return [...hand].sort((a, b) => {
+    if (sort === "rank") return rankValue(b) - rankValue(a) || (suitOrder[a.suit] ?? 99) - (suitOrder[b.suit] ?? 99);
+    if (sort === "suit") return (suitOrder[a.suit] ?? 99) - (suitOrder[b.suit] ?? 99) || rankValue(b) - rankValue(a);
+    return (suitOrder[a.suit] ?? 99) - (suitOrder[b.suit] ?? 99) || rankValue(b) - rankValue(a);
+  });
 }
 
 function telegramTrickCard(game: any, seat: number) {
@@ -1745,7 +1770,9 @@ async function telegramEditBoard(env: Env, state: DurableObjectState, room: any,
 }
 
 function telegramHandView(room:any, game:any, playerId:string) {
-  const hand = game?.hands?.[playerId] || [];
+  const rawHand = game?.hands?.[playerId] || [];
+  const sort = (game?._telegramHandSort || "combined") as "rank" | "suit" | "combined";
+  const hand = telegramSortedHand(rawHand, sort);
   const selection = new Set<string>();
   const meta = game?._telegramSelection;
   if (Array.isArray(meta)) for (const id of meta) selection.add(id);
@@ -1753,29 +1780,36 @@ function telegramHandView(room:any, game:any, playerId:string) {
   const lines = [
     `🃏 <b>دست شما — ${player?.displayName || "بازیکن"}</b>`,
     `🎯 حکم: <b>${game?.hokm ? telegramSuitLabel(game.hokm) : "انتخاب نشده"}</b>`,
-    `🃏 تعداد کارت: <b>${hand.length}</b>`
+    `🃏 تعداد کارت: <b>${hand.length}</b>`,
+    `↕️ مرتب‌سازی: <b>${telegramSortLabel(sort)}</b>`
   ];
   const build = game?.twoPlayerBuild;
-  if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) lines.push("", "👑 شما حاکم هستید؛ خال حکم را انتخاب کنید.");
+  if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) {
+    lines.push("", "👑 شما حاکم هستید؛ خال حکم را انتخاب کنید. دست کامل شما پایین نمایش داده می‌شود.");
+  }
   if (game?.phase === "build_two_player_hand" && build?.currentPlayer === playerId) {
     if (build.phase === "draw") {
       const keptCount = build?.kept?.[playerId]?.length ?? hand.length;
-      lines.push(`📦 دو کارت پیشنهادی: <b>2</b>  ·  کارت‌های شما: <b>${keptCount}/13</b>  ·  باقی‌مانده: <b>${Math.max(0, 13-keptCount)}</b>`);
+      lines.push(`📦 دو کارت پیشنهادی بالا هستند · کارت‌های شما: <b>${keptCount}/13</b> · باقی‌مانده: <b>${Math.max(0, 13-keptCount)}</b>`);
     } else {
       const required = playerId === game.hokmPlayerId ? 3 : 2;
       const selectedCount = selection.size;
-      lines.push(`🗑 حذف: <b>${selectedCount}/${required}</b>  ·  باقی‌مانده برای انتخاب: <b>${Math.max(0, required-selectedCount)}</b>`);
+      lines.push(`🗑 انتخاب حذف: <b>${selectedCount}/${required}</b> · باقی‌مانده برای انتخاب: <b>${Math.max(0, required-selectedCount)}</b>`);
       if (selectedCount === required) lines.push("✅ انتخاب کامل شد.");
     }
   } else if (game?.phase === "playing") {
     lines.push("", game.turnPlayerId === playerId ? "▶️ <b>نوبت شماست</b>" : `⏳ نوبت ${(room.players||[]).find((p:any)=>p.id===game.turnPlayerId)?.displayName || "بازیکن"} است.`);
   }
-  return {lines, hand, selection};
+  return {lines, hand, selection, sort};
 }
 
 function telegramHandKeyboard(room:any, game:any, playerId:string, selection:string[]) {
-  const hand = game?.hands?.[playerId] || [];
+  const rawHand = game?.hands?.[playerId] || [];
+  const sort = (game?._telegramHandSort || "combined") as "rank" | "suit" | "combined";
+  const hand = telegramSortedHand(rawHand, sort);
   const rows:any[][] = [];
+
+  // The upper section is always the context-sensitive choice area.
   if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) {
     rows.push(
       [{text:"♠️ پیک",callback_data:`h|${room.id}|t|spades`},{text:"♥️ دل",callback_data:`h|${room.id}|t|hearts`}],
@@ -1784,7 +1818,7 @@ function telegramHandKeyboard(room:any, game:any, playerId:string, selection:str
   } else if (game?.phase === "build_two_player_hand" && game.twoPlayerBuild?.currentPlayer === playerId) {
     if (game.twoPlayerBuild.phase === "draw") {
       rows.push((game.twoPlayerBuild.drawOptions || []).map((card:any,i:number)=>({
-        text:`🎴 ${i+1}: ${telegramCardLabel(card)}`,
+        text: telegramCardLabel(card),
         callback_data:`h|${room.id}|d|${i}`
       })));
     } else {
@@ -1795,17 +1829,31 @@ function telegramHandKeyboard(room:any, game:any, playerId:string, selection:str
       const required = playerId === game.hokmPlayerId ? 3 : 2;
       rows.push([{text:`✅ تأیید انتخاب (${selection.length}/${required})`,callback_data:`h|${room.id}|qdone`}]);
     }
-  } else if (game?.phase === "playing") {
-    const legal = game.turnPlayerId === playerId
-      ? legalCards(hand, game.trick?.[0]?.card?.suit).filter((card:any)=>isLegalMove(game, playerId, card.id))
-      : [];
-    const source = game.turnPlayerId === playerId ? legal : [];
-    for (let i=0;i<source.length;i+=3) rows.push(source.slice(i,i+3).map((card:any)=>({
-      text:`🃏 ${telegramCardLabel(card)}`,
-      callback_data:`h|${room.id}|p|${card.id}`
+  } else if (game?.phase === "playing" && game.turnPlayerId === playerId) {
+    const legal = legalCards(hand, game.trick?.[0]?.card?.suit).filter((card:any)=>isLegalMove(game, playerId, card.id));
+    if (legal.length) {
+      rows.push([{text:"🎯 کارت‌های قابل بازی",callback_data:`h|${room.id}|hand`}]);
+      for (let i=0;i<legal.length;i+=3) rows.push(legal.slice(i,i+3).map((card:any)=>({
+        text:`🃏 ${telegramCardLabel(card)}`,
+        callback_data:`h|${room.id}|p|${card.id}`
+      })));
+    }
+  }
+
+  // The player's full hand is always available below the context-sensitive choices.
+  rows.push([{text:"🃏 دست کامل شما",callback_data:`h|${room.id}|hand`}]);
+  for (let i=0;i<hand.length;i+=3) {
+    rows.push(hand.slice(i,i+3).map((card:any)=>({
+      text: telegramCardLabel(card),
+      callback_data: `h|${room.id}|hand|${card.id}`
     })));
   }
-  if (!rows.length) rows.push([{text:"🔄 بروزرسانی دست",callback_data:`h|${room.id}|hand`}]);
+
+  rows.push([
+    {text:"↕️ مرتب‌سازی: رتبه",callback_data:`h|${room.id}|sort|rank`},
+    {text:"↕️ خال",callback_data:`h|${room.id}|sort|suit`},
+    {text:"↕️ خال + رتبه",callback_data:`h|${room.id}|sort|combined`}
+  ]);
   return {inline_keyboard:rows};
 }
 
@@ -1813,8 +1861,10 @@ async function telegramUpsertGroupHand(env: Env, state: DurableObjectState, room
   const meta = await telegramGetBoardMeta(state);
   if (!meta || !game || !room.players?.some((p:any)=>p.id===playerId)) return;
   const selection = meta.selections?.[playerId] || [];
+  const handSort = meta.handSorts?.[playerId] || "combined";
   const cloned = structuredClone(game);
   cloned._telegramSelection = selection;
+  cloned._telegramHandSort = handSort;
   const view = telegramHandView(room, cloned, playerId);
   const keyboard = telegramHandKeyboard(room, cloned, playerId, selection);
   const existingMessageId = meta.ephemeralMessages?.[playerId];
@@ -1918,6 +1968,7 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         action==="close" ? "close_room" :
         action==="pv" ? "pv" :
         action==="hand" ? "show_hand" :
+        action==="sort" ? "sort_hand" :
         action==="x" ? "noop" : action;
       const query = new URLSearchParams({
         userId:String(q.from.id),
