@@ -83,7 +83,71 @@ export function telegramInitData(): string {
 }
 
 export function telegramUser(): TelegramUser | null {
-  return telegramWebApp()?.initDataUnsafe?.user ?? userFromInitData(telegramInitData());
+  // initDataUnsafe.user is display metadata only. It is NOT an authentication
+  // credential and must never make the UI think the user is authenticated.
+  // The server verifies the signed initData, so only expose a user when that
+  // signed payload is actually present.
+  const initData = telegramInitData();
+  return userFromInitData(initData);
+}
+
+export type TelegramAuthDiagnostics = {
+  hasTelegramObject: boolean;
+  hasWebApp: boolean;
+  hasInitData: boolean;
+  initDataLength: number;
+  hasUnsafeUser: boolean;
+  hasRawInitData: boolean;
+  hasStartParam: boolean;
+  host: string;
+};
+
+export function telegramAuthDiagnostics(): TelegramAuthDiagnostics {
+  if (typeof window === "undefined") {
+    return {
+      hasTelegramObject: false,
+      hasWebApp: false,
+      hasInitData: false,
+      initDataLength: 0,
+      hasUnsafeUser: false,
+      hasRawInitData: false,
+      hasStartParam: false,
+      host: ""
+    };
+  }
+
+  const app = telegramWebApp();
+  const initData = telegramInitData();
+  const rawInitData = rawTelegramInitData();
+  const startParam = telegramStartParam();
+
+  return {
+    hasTelegramObject: Boolean(window.Telegram),
+    hasWebApp: Boolean(app),
+    hasInitData: Boolean(initData),
+    initDataLength: initData.length,
+    hasUnsafeUser: Boolean(app?.initDataUnsafe?.user),
+    hasRawInitData: Boolean(rawInitData),
+    hasStartParam: Boolean(startParam),
+    host: window.location.host
+  };
+}
+
+export async function ensureTelegramAuth(timeoutMs = 8000): Promise<string> {
+  const initData = await waitForTelegramInitData(timeoutMs);
+  if (initData) return initData;
+
+  const d = telegramAuthDiagnostics();
+  const context =
+    d.hasWebApp && d.hasUnsafeUser
+      ? "Telegram.WebApp باز شده ولی initData امضاشده دریافت نشده است."
+      : d.hasTelegramObject
+        ? "اسکریپت تلگرام بارگذاری شده اما WebApp احراز هویت‌شده در دسترس نیست."
+        : "این صفحه خارج از Telegram WebApp اجرا شده است.";
+
+  throw new Error(
+    `احراز هویت تلگرام در دسترس نیست. ${context} لطفاً بازی را از لینک Mini App داخل تلگرام باز کنید.`
+  );
 }
 
 export function telegramStartParam(): string {
