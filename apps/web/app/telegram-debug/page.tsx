@@ -30,7 +30,7 @@ export default function TelegramDebugPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const rows = diagnostics
+  const rows: Array<[string, string | number | boolean]> = diagnostics
     ? [
         ["window.Telegram", diagnostics.hasTelegramObject],
         ["Telegram.WebApp", diagnostics.hasWebApp],
