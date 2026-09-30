@@ -975,16 +975,14 @@ export class GameRoomDurableObject {
           const arg = body.arg || "";
           const hostId = this.room.getState().hostId;
           if (actionName === "mini_action") {
-            if (!this.miniGame) throw new Error("بازی کارت در دسترس نیست");
+            if (!this.miniGame && !this.scalaGame) throw new Error("بازی کارت در دسترس نیست");
             const meta = await telegramGetBoardMeta(this.state);
             const selected = meta?.selections?.[userId] || [];
             const parts = arg.split(":");
             const type = parts[0];
             if (type === "hand") {
               await telegramMiniHand(this.env,this.state,this.room.getState(),this.miniGame || this.scalaGame,userId);
-            }
-            const type = parts[0];
-            if (type === "play") {
+            } else if (type === "play") {
               this.miniGame = applyMiniAction(this.miniGame, { type: "play", cardId: parts[1], suit: parts[2] }, userId);
             } else if (type === "draw") {
               this.miniGame = applyMiniAction(this.miniGame, { type: "draw" }, userId);
