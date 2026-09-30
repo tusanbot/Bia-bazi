@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { telegramInitData,
-  initTelegram, telegramUser, waitForTelegram, ensureTelegramAuth } from "../../lib/telegram";
+import { initTelegram, telegramUser, waitForTelegram, ensureTelegramAuth, telegramHeaders } from "../../lib/telegram";
 import { HOKM_VARIANTS, type HokmVariantId } from "@bia-bazi/hokm-engine";
 
 type RoomPlayer = {
@@ -70,9 +69,8 @@ export default function RoomPage() {
   const displayName = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "بازیکن" : "بازیکن";
 
   const refresh = useCallback(async () => {
-    const initData = telegramInitData() ?? "";
-    const headers: HeadersInit = {};
-    if (initData) headers["x-telegram-init-data"] = initData;
+    const initData = await ensureTelegramAuth();
+    const headers = telegramHeaders(initData);
 
     const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
       cache: "no-store",
@@ -139,7 +137,7 @@ export default function RoomPage() {
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, initData: telegramInitData() ?? "" })
+        body: JSON.stringify({ ...body, initData })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "عملیات ناموفق بود");
@@ -374,7 +372,7 @@ export default function RoomPage() {
                 const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ type: "leave", playerId, initData: telegramInitData() ?? "" })
+                  body: JSON.stringify({ type: "leave", playerId, initData })
                 });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error || "خروج از اتاق ناموفق بود");
