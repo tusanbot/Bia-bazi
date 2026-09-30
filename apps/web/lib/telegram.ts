@@ -18,6 +18,8 @@ type TelegramWebApp = {
   openTelegramLink?: (url: string) => void;
 };
 
+let cachedInitData = "";
+
 declare global {
   interface Window {
     Telegram?: { WebApp?: TelegramWebApp };
