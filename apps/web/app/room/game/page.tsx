@@ -104,10 +104,15 @@ export default function HokmGamePage() {
   useEffect(() => {
     let cancelled = false;
     initTelegram();
-    void waitForTelegram().then(app => {
-      if (cancelled) return;
-      setUser(app?.initDataUnsafe?.user ?? telegramUser());
-    });
+    void waitForTelegram()
+      .then(async () => {
+        if (cancelled) return;
+        await ensureTelegramAuth();
+        if (!cancelled) setUser(telegramUser());
+      })
+      .catch(e => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "احراز هویت تلگرام در دسترس نیست.");
+      });
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
       new URLSearchParams(window.location.search).get("tgWebAppStartParam") ??
@@ -176,10 +181,11 @@ export default function HokmGamePage() {
     setBusy(true);
     setError("");
     try {
+      const initData = await ensureTelegramAuth();
       const res = await fetchWithTimeout(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, initData: telegramInitData() ?? "" })
+        body: JSON.stringify({ ...body, initData })
       });
       let json: Payload;
       try {
