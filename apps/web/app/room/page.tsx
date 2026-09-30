@@ -39,10 +39,15 @@ export default function RoomPage() {
     let cancelled = false;
     initTelegram();
 
-    void waitForTelegram().then(app => {
-      if (cancelled) return;
-      setUser(app?.initDataUnsafe?.user ?? telegramUser());
-    });
+    void waitForTelegram()
+      .then(async () => {
+        if (cancelled) return;
+        await ensureTelegramAuth();
+        if (!cancelled) setUser(telegramUser());
+      })
+      .catch(e => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "احراز هویت تلگرام در دسترس نیست.");
+      });
 
     const queryRoom = new URLSearchParams(window.location.search).get("room") ?? "";
     const startParam =
@@ -130,6 +135,7 @@ export default function RoomPage() {
     setBusy(true);
     setError("");
     try {
+      const initData = await ensureTelegramAuth();
       const res = await fetch(`/api/room?room=${encodeURIComponent(roomId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
