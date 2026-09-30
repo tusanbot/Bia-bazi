@@ -980,6 +980,10 @@ export class GameRoomDurableObject {
             const selected = meta?.selections?.[userId] || [];
             const parts = arg.split(":");
             const type = parts[0];
+            if (type === "hand") {
+              await telegramMiniHand(this.env,this.state,this.room.getState(),this.miniGame || this.scalaGame,userId);
+            }
+            const type = parts[0];
             if (type === "play") {
               this.miniGame = applyMiniAction(this.miniGame, { type: "play", cardId: parts[1], suit: parts[2] }, userId);
             } else if (type === "draw") {
@@ -1089,6 +1093,26 @@ export class GameRoomDurableObject {
           } else if (actionName === "change_player_count") {
             if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد بازیکنان را تغییر دهد");
             this.room.setPlayerCount(Number(arg));
+          } else if (actionName === "start") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی را شروع کند");
+            if (!this.room.canStart()) throw new Error("تعداد بازیکنان هنوز کامل نیست");
+            this.room.start();
+            const rs=this.room.getState();
+            const players=rs.players.map(({id,seat,displayName,username}:any)=>({id,seat,displayName,username}));
+            if (rs.config.gameId === "hokm") {
+              const randomBytes=new Uint32Array(1); crypto.getRandomValues(randomBytes);
+              const initialHokmPlayerId=players[randomBytes[0]%players.length].id;
+              this.game=buildInitialState(players,initialHokmPlayerId,initialHokmPlayerId,Math.random,rs.config.targetScore??7,0,getHokmVariant((rs.config.variantId as HokmVariantId)||"standard").id);
+              const variant=getHokmVariant(this.game.rules.variantId);
+              if(!variant.hasTrump) this.game=startNoTrumpVariant(this.game);
+            } else if (rs.config.gameId === "scala_quaranta") {
+              const randomBytes=new Uint32Array(1); crypto.getRandomValues(randomBytes);
+              this.scalaGame=createScalaInitialState(players,players[randomBytes[0]%players.length].id,Math.random,1);
+            } else {
+              const randomBytes=new Uint32Array(1); crypto.getRandomValues(randomBytes);
+              this.miniGame=createMiniGame(rs.config.gameId as MiniGameId,players,()=>randomBytes[0]/0xffffffff);
+            }
+            this.room.markPlaying();
           } else if (actionName === "cancel_room") {
             if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را لغو کند");
             this.room.cancel();
@@ -1276,7 +1300,16 @@ export class GameRoomDurableObject {
         if (request.headers.get("x-bia-bot-token") !== this.env.TELEGRAM_BOT_TOKEN) throw new Error("Unauthorized bot action");
         const roomId = action.roomId;
         if (!this.room || !["waiting", "playing"].includes(this.room.getState().status)) {
-          this.room = createHokmRoom(roomId, action.playerCount, { id: action.hostId, displayName: action.hostName });
+          if (action.gameId === "hokm") {
+            this.room = createHokmRoom(roomId, action.playerCount as HokmPlayerCount, { id: action.hostId, displayName: action.hostName });
+          } else if (action.gameId === "scala_quaranta") {
+            this.room = GameRoom.create(roomId, { gameId:"scala_quaranta", playerCount:action.playerCount, minPlayers:2, maxPlayers:6 }, { id:action.hostId, displayName:action.hostName });
+          } else {
+            const limits:Record<string,[number,number]>={haft_khabis:[2,6],chahar_barg:[2,4],shelem:[4,4]};
+            const limit=limits[action.gameId];
+            if (!limit || action.playerCount<limit[0] || action.playerCount>limit[1]) throw new Error("تعداد بازیکنان این بازی مجاز نیست");
+            this.room = GameRoom.create(roomId, {gameId:action.gameId,playerCount:action.playerCount,minPlayers:limit[0],maxPlayers:limit[1]}, {id:action.hostId,displayName:action.hostName});
+          }
           await this.persistRoom();
           await this.save();
           await this.syncRegistry();
