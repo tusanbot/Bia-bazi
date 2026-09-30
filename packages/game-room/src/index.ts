@@ -169,6 +169,17 @@ export class GameRoom {
     return this.getState();
   }
 
+  restart(now = Date.now()): GameRoomState {
+    if (!["finished", "cancelled", "closed"].includes(this.state.status)) {
+      throw new Error("Room cannot be restarted yet");
+    }
+    this.state.status = "waiting";
+    this.state.startedAt = undefined;
+    this.state.finishedAt = undefined;
+    this.state.createdAt = now;
+    return this.getState();
+  }
+
   cancel(now = Date.now()): GameRoomState {
     if (this.state.status === "finished" || this.state.status === "cancelled" || this.state.status === "closed") {
       throw new Error("Room is already closed");
