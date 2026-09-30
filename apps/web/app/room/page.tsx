@@ -280,6 +280,9 @@ export default function RoomPage() {
                 باز کردن اتاق داخل تلگرام
               </a>
             )}
+            <a className="secondary wide" href="/telegram-debug">
+              بررسی فنی اتصال تلگرام
+            </a>
           </div>
         )}
 
