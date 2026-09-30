@@ -124,7 +124,10 @@ export default function Home() {
           setCreating(false);
         });
     }
-    });
+    })
+      .catch(e => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "احراز هویت تلگرام در دسترس نیست.");
+      });
     return () => {
       cancelled = true;
     };
