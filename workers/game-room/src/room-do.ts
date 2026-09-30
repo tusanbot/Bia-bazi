@@ -2569,22 +2569,6 @@ async function handleTelegramWebhook(request: Request, env: Env) {
     }
     if (requested) return Response.json({ok:true});
 
-      const sent = await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", {
-        chat_id: groupMessage.chat.id,
-        text: telegramRoomText(room, undefined),
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-        reply_markup: telegramBoardKeyboard(room, undefined)
-      });
-      if (sent?.ok && sent.result?.message_id) {
-        const roomDo = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.id));
-        await roomDo.fetch("https://internal/telegram-bind", {
-          method:"POST",
-          headers:{"content-type":"application/json","x-bia-bot-token":env.TELEGRAM_BOT_TOKEN},
-          body:JSON.stringify({chatId:String(groupMessage.chat.id),messageId:sent.result.message_id})
-        });
-      }
-    }
     if (command === "/rank") {
       if (!env.DB) {
         await telegramBotApi(env.TELEGRAM_BOT_TOKEN, "sendMessage", { chat_id: groupMessage.chat.id, text: "رتبه‌بندی فعلاً در دسترس نیست." });
