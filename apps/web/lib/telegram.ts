@@ -173,11 +173,53 @@ export function telegramHeaders(initData?: string): HeadersInit {
   return value ? { "x-telegram-init-data": value } : {};
 }
 
+function loadTelegramScript(): Promise<void> {
+  if (typeof window === "undefined" || window.Telegram?.WebApp) return Promise.resolve();
+
+  const existing = document.querySelector<HTMLScriptElement>(
+    'script[src^="https://telegram.org/js/telegram-web-app.js"]'
+  );
+  if (existing) {
+    return new Promise(resolve => {
+      if (window.Telegram?.WebApp) {
+        resolve();
+        return;
+      }
+      const done = () => resolve();
+      existing.addEventListener("load", done, { once: true });
+      existing.addEventListener("error", done, { once: true });
+      window.setTimeout(done, 2500);
+    });
+  }
+
+  return new Promise(resolve => {
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-web-app.js?63";
+    script.async = false;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+}
+
 export function initTelegram() {
   const app = telegramWebApp();
   app?.ready?.();
   app?.expand?.();
   rawTelegramInitData();
+}
+
+async function ensureTelegramWebAppLoaded(timeoutMs = 4000): Promise<void> {
+  if (telegramWebApp()) return;
+
+  await loadTelegramScript();
+  if (telegramWebApp()) return;
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (telegramWebApp()) return;
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+  }
 }
 
 export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp | null> {
@@ -199,6 +241,8 @@ export async function waitForTelegram(timeoutMs = 6000): Promise<TelegramWebApp 
 
 export async function waitForTelegramInitData(timeoutMs = 8000): Promise<string> {
   if (typeof window === "undefined") return "";
+
+  await ensureTelegramWebAppLoaded(Math.min(timeoutMs, 4000));
 
   const startedAt = Date.now();
 
