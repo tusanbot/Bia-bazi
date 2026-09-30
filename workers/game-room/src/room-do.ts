@@ -1759,7 +1759,8 @@ function telegramHandView(room:any, game:any, playerId:string) {
   if (game?.phase === "select_hokm" && game.hokmPlayerId === playerId) lines.push("", "👑 شما حاکم هستید؛ خال حکم را انتخاب کنید.");
   if (game?.phase === "build_two_player_hand" && build?.currentPlayer === playerId) {
     if (build.phase === "draw") {
-      lines.push(`📦 دو کارت پیشنهادی: <b>2</b>  ·  انتخاب بعدی: <b>${hand.length}</b>`);
+      const keptCount = build?.kept?.[playerId]?.length ?? hand.length;
+      lines.push(`📦 دو کارت پیشنهادی: <b>2</b>  ·  کارت‌های شما: <b>${keptCount}/13</b>  ·  باقی‌مانده: <b>${Math.max(0, 13-keptCount)}</b>`);
     } else {
       const required = playerId === game.hokmPlayerId ? 3 : 2;
       const selectedCount = selection.size;
@@ -1922,7 +1923,8 @@ async function handleTelegramWebhook(request: Request, env: Env) {
         userId:String(q.from.id),
         displayName:botUserName(q.from),
         action:mappedAction,
-        arg
+        arg,
+        callbackQueryId:q.id
       });
       if (q.from.username) query.set("username", q.from.username);
       const response = await roomDo.fetch("https://internal/telegram-action?" + query.toString(), {
