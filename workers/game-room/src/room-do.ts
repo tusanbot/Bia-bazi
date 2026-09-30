@@ -742,7 +742,148 @@ export class GameRoomDurableObject {
   async fetch(request: Request): Promise<Response> {
     try {
       if (request.headers.get("x-room-health-check") === "1") {
-        await this.load();
+        if ((request.method === "POST" || request.method === "GET") && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
+        const internalUrl = new URL(request.url);
+        if (internalUrl.pathname === "/telegram-bind") {
+          const body = await request.json() as { chatId?: string; messageId?: number };
+          if (!body.chatId || !body.messageId) throw new Error("Invalid Telegram board binding");
+          const current = await telegramGetBoardMeta(this.state);
+          await this.state.storage.put("telegram_board", {
+            chatId: body.chatId,
+            messageId: body.messageId,
+            pvMessages: current?.pvMessages || {},
+            selections: current?.selections || {}
+          } satisfies TelegramBoardMeta);
+          return Response.json({ ok: true });
+        }
+        if (internalUrl.pathname === "/telegram-action") {
+          const params = internalUrl.searchParams;
+          const body = {
+            userId: params.get("userId") || "",
+            displayName: params.get("displayName") || "بازیکن",
+            username: params.get("username") || undefined,
+            action: params.get("action") || "",
+            arg: params.get("arg") || ""
+          };
+          const userId = String(body.userId || "");
+          const telegramDisplayName = body.displayName || "بازیکن";
+          if (!userId || !body.action) throw new Error("Invalid Telegram action");
+          await this.load();
+          if (!this.room) throw new Error("Room does not exist");
+          if (!this.room.getState().players.some((p:any)=>p.id===userId) && body.action !== "seat" && body.action !== "join") {
+            throw new Error("شما عضو این اتاق نیستید");
+          }
+          const actionName = body.action;
+          const arg = body.arg || "";
+          const hostId = this.room.getState().hostId;
+          if (actionName === "manage") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تنظیمات بازی را تغییر دهد");
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta) {
+              meta.managementUserId = userId;
+              await this.state.storage.put("telegram_board", meta);
+            }
+          } else if (actionName === "manage_back") {
+            const meta = await telegramGetBoardMeta(this.state);
+            if (meta) {
+              delete meta.managementUserId;
+              await this.state.storage.put("telegram_board", meta);
+            }
+          } else if (actionName === "set_target_score") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد دورها را تغییر دهد");
+            const score = Number(arg);
+            if (![1,3,5,7].includes(score)) throw new Error("تعداد دور نامعتبر است");
+            this.room.setTargetScore(score as 1|3|5|7);
+          } else if (actionName === "set_auto_play") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی خودکار را تغییر دهد");
+            const enabled = arg === "1";
+            this.room.setAutoPlay(enabled, this.room.getState().config.autoPlayDelaySeconds ?? 10);
+          } else if (actionName === "set_auto_delay") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تأخیر بازی خودکار را تغییر دهد");
+            const seconds = Number(arg);
+            this.room.setAutoPlay(Boolean(this.room.getState().config.autoPlayEnabled), seconds);
+          } else if (actionName === "change_player_count") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد بازیکنان را تغییر دهد");
+            this.room.setPlayerCount(Number(arg));
+          } else if (actionName === "cancel_room") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را لغو کند");
+            this.room.cancel();
+          } else if (actionName === "close_room") {
+            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را ببندد");
+            this.room.close();
+          } else if (actionName === "join") {
+            if (!this.room.getState().players.some((p:any)=>p.id===userId)) {
+              this.room.join({id:userId, displayName:telegramDisplayName, username:body.username});
+            }
+          } else if (actionName === "seat") {
+            const seat = Number(arg);
+            if (!Number.isInteger(seat) || seat < 0 || seat > 3) throw new Error("صندلی نامعتبر است");
+            if (!this.room.getState().players.some((p:any)=>p.id===userId)) this.room.join({id:userId,displayName:telegramDisplayName,username:body.username});
+            this.room.setPlayerSeat(userId, seat);
+          } else if (actionName === "leave") {
+            this.room.leave(userId);
+          } else if (actionName === "start") {
+            if (this.room.getState().hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی را شروع کند");
+            this.room.start();
+            const rs=this.room.getState();
+            const players=rs.players.map(({id,seat,displayName,username}:any)=>({id,seat,displayName,username}));
+            const randomBytes=new Uint32Array(1); crypto.getRandomValues(randomBytes);
+            const initialHokmIndex=randomBytes[0]%players.length;
+            const initialHokmPlayerId=players[initialHokmIndex].id;
+            this.game=buildInitialState(players,initialHokmPlayerId,initialHokmPlayerId,Math.random,rs.config.targetScore??7,0,getHokmVariant((rs.config.variantId as HokmVariantId)||"standard").id);
+            const variant=getHokmVariant(this.game.rules.variantId);
+            if(!variant.hasTrump) this.game=startNoTrumpVariant(this.game);
+            await this.persistRoom(); await this.save(); await this.syncRegistry();
+          } else if (actionName === "trump") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            this.game=chooseHokm(this.game,userId,arg as Suit);
+          } else if (actionName === "play") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            this.game=playCard(this.game,userId,arg);
+          } else if (actionName === "finish") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            this.game=finishHand(this.game);
+            if (this.game.phase === "game_finished") {
+              this.room.finish();
+              await this.persistRoom();
+              await this.persistGameResult(this.game);
+              await this.recordFinalResult(this.game);
+              await this.notifyGroupResult(this.game);
+            }
+          } else if (actionName === "next") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            this.game=startNextHand(this.game);
+          } else if (actionName === "toggle_card") {
+            const meta=await telegramGetBoardMeta(this.state);
+            if(!meta) throw new Error("Telegram board is not configured");
+            const selected=new Set(meta.selections[userId]||[]);
+            if(selected.has(arg)) selected.delete(arg); else selected.add(arg);
+            meta.selections[userId]=[...selected];
+            await this.state.storage.put("telegram_board",meta);
+          } else if (actionName === "discard_done") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            const meta=await telegramGetBoardMeta(this.state);
+            const selected=meta?.selections[userId]||[];
+            if(!selected.length) throw new Error("کارت انتخاب نشده است");
+            this.game=discardTwo(this.game,userId,selected);
+            if(meta){ delete meta.selections[userId]; await this.state.storage.put("telegram_board",meta); }
+          } else if (actionName === "draw") {
+            if (!this.game) throw new Error("بازی شروع نشده است");
+            this.game=drawTwo(this.game,userId,arg==="1");
+          } else if (actionName === "pv") {
+            // Refresh only; no game mutation.
+          } else if (actionName === "noop") {
+          } else {
+            throw new Error("Unknown Telegram game action");
+          }
+          await this.persistRoom(); await this.save(); await this.syncRegistry();
+          await telegramEditBoard(this.env,this.state,this.room.getState(),this.game);
+          await telegramRefreshAllPrivateHands(this.env,this.state,this.room.getState(),this.game);
+          return Response.json({ok:true,room:this.room.getState(),game:this.game});
+        }
+      }
+
+      await this.load();
         return Response.json({ exists: Boolean(this.room), status: this.room?.getState().status ?? null });
       }
 
@@ -913,146 +1054,6 @@ export class GameRoomDurableObject {
         return Response.json({ room: this.room.getState(), game: null });
       }
 
-      if ((request.method === "POST" || request.method === "GET") && request.headers.get("x-bia-bot-token") === this.env.TELEGRAM_BOT_TOKEN) {
-        const internalUrl = new URL(request.url);
-        if (internalUrl.pathname === "/telegram-bind") {
-          const body = await request.json() as { chatId?: string; messageId?: number };
-          if (!body.chatId || !body.messageId) throw new Error("Invalid Telegram board binding");
-          const current = await telegramGetBoardMeta(this.state);
-          await this.state.storage.put("telegram_board", {
-            chatId: body.chatId,
-            messageId: body.messageId,
-            pvMessages: current?.pvMessages || {},
-            selections: current?.selections || {}
-          } satisfies TelegramBoardMeta);
-          return Response.json({ ok: true });
-        }
-        if (internalUrl.pathname === "/telegram-action") {
-          const params = internalUrl.searchParams;
-          const body = {
-            userId: params.get("userId") || "",
-            displayName: params.get("displayName") || "بازیکن",
-            username: params.get("username") || undefined,
-            action: params.get("action") || "",
-            arg: params.get("arg") || ""
-          };
-          const userId = String(body.userId || "");
-          const telegramDisplayName = body.displayName || "بازیکن";
-          if (!userId || !body.action) throw new Error("Invalid Telegram action");
-          await this.load();
-          if (!this.room) throw new Error("Room does not exist");
-          if (!this.room.getState().players.some((p:any)=>p.id===userId) && body.action !== "seat" && body.action !== "join") {
-            throw new Error("شما عضو این اتاق نیستید");
-          }
-          const actionName = body.action;
-          const arg = body.arg || "";
-          const hostId = this.room.getState().hostId;
-          if (actionName === "manage") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تنظیمات بازی را تغییر دهد");
-            const meta = await telegramGetBoardMeta(this.state);
-            if (meta) {
-              meta.managementUserId = userId;
-              await this.state.storage.put("telegram_board", meta);
-            }
-          } else if (actionName === "manage_back") {
-            const meta = await telegramGetBoardMeta(this.state);
-            if (meta) {
-              delete meta.managementUserId;
-              await this.state.storage.put("telegram_board", meta);
-            }
-          } else if (actionName === "set_target_score") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد دورها را تغییر دهد");
-            const score = Number(arg);
-            if (![1,3,5,7].includes(score)) throw new Error("تعداد دور نامعتبر است");
-            this.room.setTargetScore(score as 1|3|5|7);
-          } else if (actionName === "set_auto_play") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی خودکار را تغییر دهد");
-            const enabled = arg === "1";
-            this.room.setAutoPlay(enabled, this.room.getState().config.autoPlayDelaySeconds ?? 10);
-          } else if (actionName === "set_auto_delay") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تأخیر بازی خودکار را تغییر دهد");
-            const seconds = Number(arg);
-            this.room.setAutoPlay(Boolean(this.room.getState().config.autoPlayEnabled), seconds);
-          } else if (actionName === "change_player_count") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند تعداد بازیکنان را تغییر دهد");
-            this.room.setPlayerCount(Number(arg));
-          } else if (actionName === "cancel_room") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را لغو کند");
-            this.room.cancel();
-          } else if (actionName === "close_room") {
-            if (hostId !== userId) throw new Error("فقط میزبان می‌تواند اتاق را ببندد");
-            this.room.close();
-          } else if (actionName === "join") {
-            if (!this.room.getState().players.some((p:any)=>p.id===userId)) {
-              this.room.join({id:userId, displayName:telegramDisplayName, username:body.username});
-            }
-          } else if (actionName === "seat") {
-            const seat = Number(arg);
-            if (!Number.isInteger(seat) || seat < 0 || seat > 3) throw new Error("صندلی نامعتبر است");
-            if (!this.room.getState().players.some((p:any)=>p.id===userId)) this.room.join({id:userId,displayName:telegramDisplayName,username:body.username});
-            this.room.setPlayerSeat(userId, seat);
-          } else if (actionName === "leave") {
-            this.room.leave(userId);
-          } else if (actionName === "start") {
-            if (this.room.getState().hostId !== userId) throw new Error("فقط میزبان می‌تواند بازی را شروع کند");
-            this.room.start();
-            const rs=this.room.getState();
-            const players=rs.players.map(({id,seat,displayName,username}:any)=>({id,seat,displayName,username}));
-            const randomBytes=new Uint32Array(1); crypto.getRandomValues(randomBytes);
-            const initialHokmIndex=randomBytes[0]%players.length;
-            const initialHokmPlayerId=players[initialHokmIndex].id;
-            this.game=buildInitialState(players,initialHokmPlayerId,initialHokmPlayerId,Math.random,rs.config.targetScore??7,0,getHokmVariant((rs.config.variantId as HokmVariantId)||"standard").id);
-            const variant=getHokmVariant(this.game.rules.variantId);
-            if(!variant.hasTrump) this.game=startNoTrumpVariant(this.game);
-            await this.persistRoom(); await this.save(); await this.syncRegistry();
-          } else if (actionName === "trump") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            this.game=chooseHokm(this.game,userId,arg as Suit);
-          } else if (actionName === "play") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            this.game=playCard(this.game,userId,arg);
-          } else if (actionName === "finish") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            this.game=finishHand(this.game);
-            if (this.game.phase === "game_finished") {
-              this.room.finish();
-              await this.persistRoom();
-              await this.persistGameResult(this.game);
-              await this.recordFinalResult(this.game);
-              await this.notifyGroupResult(this.game);
-            }
-          } else if (actionName === "next") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            this.game=startNextHand(this.game);
-          } else if (actionName === "toggle_card") {
-            const meta=await telegramGetBoardMeta(this.state);
-            if(!meta) throw new Error("Telegram board is not configured");
-            const selected=new Set(meta.selections[userId]||[]);
-            if(selected.has(arg)) selected.delete(arg); else selected.add(arg);
-            meta.selections[userId]=[...selected];
-            await this.state.storage.put("telegram_board",meta);
-          } else if (actionName === "discard_done") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            const meta=await telegramGetBoardMeta(this.state);
-            const selected=meta?.selections[userId]||[];
-            if(!selected.length) throw new Error("کارت انتخاب نشده است");
-            this.game=discardTwo(this.game,userId,selected);
-            if(meta){ delete meta.selections[userId]; await this.state.storage.put("telegram_board",meta); }
-          } else if (actionName === "draw") {
-            if (!this.game) throw new Error("بازی شروع نشده است");
-            this.game=drawTwo(this.game,userId,arg==="1");
-          } else if (actionName === "pv") {
-            // Refresh only; no game mutation.
-          } else if (actionName === "noop") {
-          } else {
-            throw new Error("Unknown Telegram game action");
-          }
-          await this.persistRoom(); await this.save(); await this.syncRegistry();
-          await telegramEditBoard(this.env,this.state,this.room.getState(),this.game);
-          await telegramRefreshAllPrivateHands(this.env,this.state,this.room.getState(),this.game);
-          return Response.json({ok:true,room:this.room.getState(),game:this.game});
-        }
-      }
 
       const telegramUser = await verifyTelegramInitData(action.initData, this.env.TELEGRAM_BOT_TOKEN);
       const userId = String(telegramUser.id);
