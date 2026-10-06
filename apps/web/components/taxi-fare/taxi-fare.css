@@ -63,8 +63,7 @@
   }
   .taxi-print-header {
     display:grid;
-    grid-template-columns:var(--taxi-col-number) var(--taxi-col-city) repeat(2,var(--taxi-col-fare));
-    grid-auto-columns:var(--taxi-col-custom);
+    grid-template-columns:var(--taxi-grid-template);
     font-weight:900;
     border-bottom:0.25mm solid #111;
   }
@@ -81,8 +80,7 @@
   }
   .taxi-print-data {
     display:grid;
-    grid-template-columns:var(--taxi-col-number) var(--taxi-col-city) repeat(2,var(--taxi-col-fare));
-    grid-auto-columns:var(--taxi-col-custom);
+    grid-template-columns:var(--taxi-grid-template);
     border-bottom:0.2mm solid #111;
   }
   .taxi-print-header > div,.taxi-print-cell,.taxi-print-letter {
