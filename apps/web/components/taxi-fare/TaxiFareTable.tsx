@@ -1,4 +1,5 @@
 "use client";
+import {getDisplayCity} from "../../lib/taxi-fare/alphabet";
 import type { TaxiFareField, TaxiFareRow } from "../../lib/taxi-fare/types";
 
 type Props={rows:TaxiFareRow[];customFields:TaxiFareField[];onUpdate:(id:string,patch:Partial<TaxiFareRow>)=>void;onRemove:(id:string)=>void};
@@ -10,7 +11,7 @@ export function TaxiFareTable({rows,customFields,onUpdate,onRemove}:Props){
   </tr></thead><tbody>
     {rows.map((row,index)=><tr key={row.id}>
       <td>{index+1}</td>
-      <EditableCell value={row.city} onChange={city=>onUpdate(row.id,{city})}/>
+      <EditableCell value={getDisplayCity(row.city)} onChange={city=>onUpdate(row.id,{city})}/>
       <EditableCell number value={row.day} onChange={day=>onUpdate(row.id,{day})}/>
       <EditableCell number value={row.night} onChange={night=>onUpdate(row.id,{night})}/>
       {customFields.map(f=><EditableCell key={f.id} value={row.custom[f.id]??""} onChange={value=>onUpdate(row.id,{custom:{...row.custom,[f.id]:value}})}/>)}
