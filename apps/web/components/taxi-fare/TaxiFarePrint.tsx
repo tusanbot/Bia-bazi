@@ -51,8 +51,8 @@ function PrintPage({right,left,fields,settings,pageNumber,total}:{right:Unit[];l
   if(f.id==="day"||f.id==="night")return "2.5fr";
   return "1fr";
  }).join(" ");
- const style={width:`${size.w}mm`,height:`${size.h}mm`,["--taxi-row-height" as string]:`${rowHeight}mm`,["--taxi-padding" as string]:`${settings.textPadding}mm`,["--taxi-max-font" as string]:`${settings.maxFontSize}px`,["--taxi-cols" as string]:String(Math.max(1,fields.length)),["--taxi-grid-template" as string]:gridTemplate};
- return <section className="taxi-print-page" style={style}><PrintColumn units={right} fields={fields}/><PrintColumn units={left} fields={fields}/>{total>1&&<div className="taxi-print-page-number">صفحه {pageNumber} از {total}</div>}</section>;
+ const style={width:`${size.w}mm`,height:`${size.h}mm`,["--taxi-row-height" as string]:`${rowHeight}mm`,["--taxi-padding" as string]:`${settings.textPadding}mm`,["--taxi-max-font" as string]:`${settings.maxFontSize}px`,["--taxi-title-font" as string]:`${settings.titleFontSize}px`,["--taxi-cols" as string]:String(Math.max(1,fields.length)),["--taxi-grid-template" as string]:gridTemplate};
+ return <section className="taxi-print-page" style={style}><PrintColumn units={right} fields={fields}/><PrintColumn units={left} fields={fields}/></section>;
 }
 function PrintColumn({units,fields}:{units:Unit[];fields:{id:string;label:string}[]}){
  const cells=units.slice(0,ROWS_PER_COLUMN);
