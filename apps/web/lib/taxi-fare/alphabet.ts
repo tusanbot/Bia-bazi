@@ -4,8 +4,8 @@ const LETTERS = [
 ];
 
 export const TAXI_SPECIAL_MARKERS = {
-  border: "\u2060\u2060",
-  tabriz: "\u2060\u2061",
+  border: "@",
+  tabriz: "#",
 } as const;
 
 export type TaxiFareGroup = "alphabet" | "border" | "tabriz";
@@ -16,8 +16,8 @@ export function normalizePersian(value: string) {
 }
 
 export function getTaxiGroup(value: string): TaxiFareGroup {
-  if (value.startsWith(TAXI_SPECIAL_MARKERS.border)) return "border";
-  if (value.startsWith(TAXI_SPECIAL_MARKERS.tabriz)) return "tabriz";
+  if (value.trimStart().startsWith(TAXI_SPECIAL_MARKERS.border)) return "border";
+  if (value.trimStart().startsWith(TAXI_SPECIAL_MARKERS.tabriz)) return "tabriz";
   return "alphabet";
 }
 
