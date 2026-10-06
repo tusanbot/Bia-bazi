@@ -33,5 +33,8 @@ function PrintColumn({units,fields}:{units:Unit[];fields:{id:string;label:string
  {Array.from({length:Math.max(0,ROWS_PER_COLUMN-cells.length)}).map((_,i)=><div className="taxi-print-row taxi-print-data taxi-print-empty" key={`e-${i}`}>{fields.map(f=><div key={f.id}/>)}</div>)}
  </div></div>;
 }
-function isLegacyField(name:string){const n=name.trim().replace(/ي/g,"ی").replace(/ى/g,"ی").replace(/ك/g,"ک");return n==="نام شهر و استان"||n==="استان";}
+function isLegacyField(name:string){
+ const n=name.trim().replace(/ي/g,"ی").replace(/ى/g,"ی").replace(/ك/g,"ک");
+ return n==="نام شهر و استان"||n==="استان"||n==="ردیف";
+}
 function valueOf(unit:Extract<Unit,{type:"data"}>,id:string){if(id==="number")return unit.number;if(id==="city")return unit.row.city;if(id==="day")return unit.row.day;if(id==="night")return unit.row.night;return unit.row.custom[id]??"";}
