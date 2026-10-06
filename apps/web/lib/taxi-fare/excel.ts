@@ -6,7 +6,7 @@ export async function importTaxiFareExcel(file:File):Promise<ImportedTaxiFare>{
  const json=XLSX.utils.sheet_to_json<Record<string,unknown>>(sh,{defval:""}); if(!json.length)return{rows:[],customFields:[]};
  const headers=Object.keys(json[0]); const find=(names:string[])=>headers.find(h=>names.includes(h.trim().toLowerCase()));
  const cityKey=find(["شهر","city"]),dayKey=find(["کرایه روز","روز","day","day fare"]),nightKey=find(["کرایه شب","شب","night","night fare"]);
- const fixed=new Set([cityKey,dayKey,nightKey].filter(Boolean)); const customHeaders=headers.filter(h=>!fixed.has(h));
+ const fixed=new Set([cityKey,dayKey,nightKey].filter(Boolean)); const normalizeHeader=(name:string)=>name.trim().replace(/[يى]/g,"ی").replace(/ك/g,"ک").replace(/\s+/g," "); const legacy=new Set(["ردیف","استان","نام شهر و استان"]); const customHeaders=headers.filter(h=>!fixed.has(h)&&!legacy.has(normalizeHeader(h)));
  const customFields=customHeaders.map(name=>({id:slug(name)||`field-${Math.random().toString(36).slice(2,8)}`,name,enabled:true}));
  const rows=json.map((item,index)=>({id:`taxi-${Date.now()}-${index}-${Math.random().toString(36).slice(2,7)}`,city:String((cityKey&&item[cityKey])??""),day:String((dayKey&&item[dayKey])??""),night:String((nightKey&&item[nightKey])??""),custom:Object.fromEntries(customHeaders.map(h=>[customFields.find(f=>f.name===h)!.id,String(item[h]??"")]))}));
  return{rows,customFields};
