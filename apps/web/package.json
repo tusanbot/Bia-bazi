@@ -9,6 +9,7 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "xlsx": "^0.18.5",
     "@bia-bazi/hokm-engine": "0.1.0",
     "@bia-bazi/scala-quaranta-engine": "0.1.0"
   },
