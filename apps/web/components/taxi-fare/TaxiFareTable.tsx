@@ -11,12 +11,21 @@ export function TaxiFareTable({rows,customFields,onUpdate,onRemove}:Props){
     {rows.map((row,index)=><tr key={row.id}>
       <td>{index+1}</td>
       <EditableCell value={row.city} onChange={city=>onUpdate(row.id,{city})}/>
-      <EditableCell value={row.day} onChange={day=>onUpdate(row.id,{day})}/>
-      <EditableCell value={row.night} onChange={night=>onUpdate(row.id,{night})}/>
+      <EditableCell number value={row.day} onChange={day=>onUpdate(row.id,{day})}/>
+      <EditableCell number value={row.night} onChange={night=>onUpdate(row.id,{night})}/>
       {customFields.map(f=><EditableCell key={f.id} value={row.custom[f.id]??""} onChange={value=>onUpdate(row.id,{custom:{...row.custom,[f.id]:value}})}/>)}
       <td><button className="icon-button danger" onClick={()=>onRemove(row.id)}>🗑️</button></td>
     </tr>)}
     {!rows.length&&<tr><td colSpan={5+customFields.length} className="empty-state">هنوز شهری اضافه نشده است.</td></tr>}
   </tbody></table></div>;
 }
-function EditableCell({value,onChange}:{value:string;onChange:(value:string)=>void}){return <td><input value={value} onChange={e=>onChange(e.target.value)}/></td>}
+function EditableCell({value,onChange,number}:{value:string;onChange:(value:string)=>void;number?:boolean}){
+  const formatFare=(input:string)=>{
+    const normalized=input.replace(/[٬،,\\s]/g,"").replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+    if(!normalized)return "";
+    const sign=normalized.startsWith("-")?"-":"";
+    const digits=normalized.replace(/[^0-9]/g,"");
+    return sign+Number(digits||0).toLocaleString("en-US");
+  };
+  return <td><input value={value} inputMode={number?"numeric":"text"} onChange={e=>onChange(number?formatFare(e.target.value):e.target.value)}/></td>
+}
