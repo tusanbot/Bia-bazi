@@ -8,7 +8,6 @@ import { DEFAULT_TAXI_FARE_SETTINGS, TaxiFareField, TaxiFareRow, TaxiFareSetting
 import { TaxiFareTable } from "./TaxiFareTable";
 import { TaxiFareSettingsPanel } from "./TaxiFareSettingsPanel";
 import { TaxiFarePrint } from "./TaxiFarePrint";
-import "./taxi-fare.css";
 
 const newRow = (): TaxiFareRow => ({
   id: `taxi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
