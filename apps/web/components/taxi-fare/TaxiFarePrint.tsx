@@ -19,7 +19,7 @@ export function TaxiFarePrint({rows,customFields,settings,enabled}:{rows:TaxiFar
  return <div className={`taxi-print-root paper-${settings.paperSize}`}><style media="print">{`@page{size:${settings.paperSize} portrait;margin:5mm}`}</style>{pages.map((page,i)=><PrintPage key={i} right={page.slice(0,ROWS_PER_COLUMN)} left={page.slice(ROWS_PER_COLUMN)} fields={fields} settings={settings} pageNumber={i+1} total={pages.length}/>)}</div>;
 }
 function PrintPage({right,left,fields,settings,pageNumber,total}:{right:Unit[];left:Unit[];fields:{id:string;label:string}[];settings:TaxiFareSettings;pageNumber:number;total:number}){
- const size=PAPER[settings.paperSize],rowHeight=(size.h-10)/26;
+ const size=PAPER[settings.paperSize],rowHeight=(size.h-12)/26;
  const style={width:`${size.w}mm`,height:`${size.h}mm`,["--taxi-row-height" as string]:`${rowHeight}mm`,["--taxi-padding" as string]:`${settings.textPadding}mm`,["--taxi-max-font" as string]:`${settings.maxFontSize}px`,["--taxi-cols" as string]:String(Math.max(1,fields.length))};
  return <section className="taxi-print-page" style={style}><PrintColumn units={right} fields={fields}/><PrintColumn units={left} fields={fields}/>{total>1&&<div className="taxi-print-page-number">صفحه {pageNumber} از {total}</div>}</section>;
 }
@@ -34,7 +34,7 @@ function PrintColumn({units,fields}:{units:Unit[];fields:{id:string;label:string
  </div></div>;
 }
 function isLegacyField(name:string){
- const n=name.trim().replace(/ي/g,"ی").replace(/ى/g,"ی").replace(/ك/g,"ک");
- return n==="نام شهر و استان"||n==="استان"||n==="ردیف";
+ const n=name.trim().replace(/[يى]/g,"ی").replace(/ك/g,"ک").replace(/[‌\u200c]/g," ").replace(/\s+/g," ");
+ return n==="نام شهر و استان"||n==="استان"||n==="شهر و استان"||n==="ردیف";
 }
 function valueOf(unit:Extract<Unit,{type:"data"}>,id:string){if(id==="number")return unit.number;if(id==="city")return unit.row.city;if(id==="day")return unit.row.day;if(id==="night")return unit.row.night;return unit.row.custom[id]??"";}
