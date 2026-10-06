@@ -36,8 +36,8 @@
 .custom-fields-head,.custom-field-row { display:flex; gap:10px; align-items:center; margin-top:10px; }
 .custom-field-row input { flex:1; }
 @media(max-width:900px){.taxi-fare-title{flex-direction:column}.settings-grid{grid-template-columns:1fr}}
+
 @media print {
-  @page { margin:5mm; }
   body { margin:0 !important; }
   body * { visibility:hidden !important; }
   .taxi-print-root,.taxi-print-root * { visibility:visible !important; }
@@ -52,6 +52,6 @@
   .taxi-print-body { display:grid; grid-template-rows:repeat(25,var(--taxi-row-height)); min-height:0; }
   .taxi-print-data { min-width:0; min-height:0; border-bottom:0.2mm solid #111; }
   .taxi-print-letter { grid-column:1/-1; border-bottom:0.2mm solid #111; font-weight:900; font-size:var(--taxi-max-font); }
-  .taxi-print-cell { font-size:clamp(8px,var(--taxi-max-font),var(--taxi-max-font)); font-weight:800; }
+  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }
   .taxi-print-page-number { position:absolute; bottom:1mm; left:50%; transform:translateX(-50%); font-size:9px; }
 }

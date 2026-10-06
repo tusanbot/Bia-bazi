@@ -20,7 +20,7 @@ export function getInitialLetter(value: string) {
   const first = text.charAt(0);
   if (first === "آ" || first === "ا") return "الف";
   if (first === "ی") return "ی";
-  return LETTERS.find((letter) => letter === first) ?? first.toUpperCase() || "سایر";
+  return LETTERS.find((letter) => letter === first) ?? (first.toUpperCase() || "سایر");
 }
 
 export function sortTaxiRows(rows: import("./types").TaxiFareRow[]) {
