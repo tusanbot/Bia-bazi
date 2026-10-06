@@ -1,6 +1,6 @@
 "use client";
 import {useMemo} from "react";
-import {getDisplayCity,getInitialLetter,getTaxiGroup,normalizePersian} from "../../lib/taxi-fare/alphabet";
+import {getDisplayCity,getInitialLetter,getTaxiGroup} from "../../lib/taxi-fare/alphabet";
 import type {TaxiFareField,TaxiFareRow,TaxiFareSettings} from "../../lib/taxi-fare/types";
 const ROWS_PER_COLUMN=25,UNITS_PER_PAGE=50;
 const PAPER={A4:{w:210,h:297},A3:{w:297,h:420}};
