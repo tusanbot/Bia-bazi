@@ -1,5 +1,5 @@
 "use client";
-import {getDisplayCity} from "../../lib/taxi-fare/alphabet";
+import {getDisplayCity,getTaxiGroup,TAXI_SPECIAL_MARKERS} from "../../lib/taxi-fare/alphabet";
 import type { TaxiFareField, TaxiFareRow } from "../../lib/taxi-fare/types";
 
 type Props={rows:TaxiFareRow[];customFields:TaxiFareField[];onUpdate:(id:string,patch:Partial<TaxiFareRow>)=>void;onRemove:(id:string)=>void};
@@ -11,7 +11,7 @@ export function TaxiFareTable({rows,customFields,onUpdate,onRemove}:Props){
   </tr></thead><tbody>
     {rows.map((row,index)=><tr key={row.id}>
       <td>{index+1}</td>
-      <EditableCell value={getDisplayCity(row.city)} onChange={city=>onUpdate(row.id,{city})}/>
+      <EditableCell value={getDisplayCity(row.city)} onChange={city=>onUpdate(row.id,{city:withCityMarker(row.city,city)})}/>
       <EditableCell number value={row.day} onChange={day=>onUpdate(row.id,{day})}/>
       <EditableCell number value={row.night} onChange={night=>onUpdate(row.id,{night})}/>
       {customFields.map(f=><EditableCell key={f.id} value={row.custom[f.id]??""} onChange={value=>onUpdate(row.id,{custom:{...row.custom,[f.id]:value}})}/>)}
@@ -29,4 +29,10 @@ function EditableCell({value,onChange,number}:{value:string;onChange:(value:stri
     return sign+Number(digits||0).toLocaleString("en-US");
   };
   return <td><input value={value} inputMode={number?"numeric":"text"} onChange={e=>onChange(number?formatFare(e.target.value):e.target.value)}/></td>
+}
+function withCityMarker(original:string,city:string){
+  const group=getTaxiGroup(original);
+  if(group==="border") return TAXI_SPECIAL_MARKERS.border+city;
+  if(group==="tabriz") return TAXI_SPECIAL_MARKERS.tabriz+city;
+  return city;
 }
