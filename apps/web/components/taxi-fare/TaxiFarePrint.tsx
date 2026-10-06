@@ -56,7 +56,7 @@ function PrintPage({right,left,fields,settings,pageNumber,total}:{right:Unit[];l
 }
 function PrintColumn({units,fields}:{units:Unit[];fields:{id:string;label:string}[]}){
  const cells=units.slice(0,ROWS_PER_COLUMN);
- return <div className="taxi-print-column"><div className="taxi-print-header">{fields.map(f=><div key={f.id}>{f.label}</div>)}</div><div className="taxi-print-body">
+ return <div className="taxi-print-column"><div className="taxi-print-header">{fields.map(f=><div key={f.id} className="taxi-print-title">{f.label}</div>)}</div><div className="taxi-print-body">
  {cells.map((u,i)=>u.type==="letter"
    ? <div className="taxi-print-row taxi-print-letter-row" key={`l-${i}-${u.letter}`}><div className="taxi-print-letter">{u.letter}</div></div>
    : u.type==="group"
