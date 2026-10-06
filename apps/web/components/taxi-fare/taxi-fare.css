@@ -51,7 +51,7 @@
   .taxi-print-header > div:last-child,.taxi-print-cell:last-child { border-left:0; }
   .taxi-print-body { display:grid; grid-template-rows:repeat(25,var(--taxi-row-height)); min-height:0; }
   .taxi-print-data { min-width:0; min-height:0; border-bottom:0.2mm solid #111; }
-  .taxi-print-letter { grid-column:1/-1; border-bottom:0.2mm solid #111; font-weight:900; font-size:var(--taxi-max-font); }
+  .taxi-print-letter { grid-column:1 / -1 !important; width:100%; border-left:0 !important; border-bottom:0.2mm solid #111; font-weight:900; font-size:var(--taxi-max-font); }
   .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }
   .taxi-print-page-number { position:absolute; bottom:1mm; left:50%; transform:translateX(-50%); font-size:9px; }
 }
