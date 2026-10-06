@@ -5,10 +5,18 @@ export type ImportedTaxiFare={rows:TaxiFareRow[];customFields:TaxiFareField[]};
 const slug=(v:string)=>v.trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g,"-");
 const normalize=(v:string)=>v.trim().replace(/[يى]/g,"ی").replace(/ك/g,"ک").replace(/[‌\u200c]/g," ").replace(/\s+/g," ");
 const aliases={
- city:new Set(["شهر","city","نام شهر"]),
+ city:new Set(["شهر","city","نام شهر","نام شهر و استان","شهر و استان"]),
  day:new Set(["کرایه روز","روز","day","day fare"]),
  night:new Set(["کرایه شب","شب","night","night fare"]),
 };
+
+function formatFare(value:string){
+ const digits=value.trim().replace(/[٬،,\s]/g,"").replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+ if(!digits)return "";
+ const sign=digits.startsWith("-")?"-":"";
+ const clean=digits.replace(/[^0-9]/g,"");
+ return sign+Number(clean||0).toLocaleString("en-US");
+}
 
 export async function importTaxiFareExcel(file:File):Promise<ImportedTaxiFare>{
  const XLSX=await import("xlsx");
@@ -25,8 +33,10 @@ export async function importTaxiFareExcel(file:File):Promise<ImportedTaxiFare>{
  const cityIndex=find(aliases.city),dayIndex=find(aliases.day),nightIndex=find(aliases.night);
 
  const valid=(i:number)=>i>=0;
+ const fallbackCityIndex=cityIndex>=0?cityIndex:(headers.findIndex(h=>h==="ردیف")===0?1:0);
+ const resolvedCityIndex=valid(cityIndex)?cityIndex:fallbackCityIndex;
  const customIndexes=headers.map((name,i)=>({name,index:i})).filter(({name,index})=>
-   name!==""&&!valid(index===cityIndex?cityIndex:-1)&&index!==dayIndex&&index!==nightIndex&&
+   name!==""&&!valid(index===resolvedCityIndex?resolvedCityIndex:-1)&&index!==dayIndex&&index!==nightIndex&&
    !new Set(["ردیف","استان","نام شهر و استان","شهر و استان"]).has(name)
  );
  const customFields=customIndexes.map(({name})=>({id:slug(name)||`field-${Math.random().toString(36).slice(2,8)}`,name,enabled:true}));
@@ -34,9 +44,9 @@ export async function importTaxiFareExcel(file:File):Promise<ImportedTaxiFare>{
  const dataRows=matrix.slice(matrix.indexOf(first)+1).filter(row=>Array.isArray(row)&&row.some(cell=>String(cell??"").trim()!==""));
  const rows=dataRows.map((item,index)=>({
    id:`taxi-${Date.now()}-${index}-${Math.random().toString(36).slice(2,7)}`,
-   city:valid(cityIndex)?String(item[cityIndex]??""):"",
-   day:valid(dayIndex)?String(item[dayIndex]??""):"",
-   night:valid(nightIndex)?String(item[nightIndex]??""):"",
+   city:String(item[resolvedCityIndex]??""),
+   day:valid(dayIndex)?formatFare(String(item[dayIndex]??"")):"",
+   night:valid(nightIndex)?formatFare(String(item[nightIndex]??"")):"",
    custom:Object.fromEntries(customIndexes.map((entry,j)=>[customFields[j].id,String(item[entry.index]??"")]))
  }));
  return{rows,customFields};
