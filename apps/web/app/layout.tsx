@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "../components/taxi-fare/taxi-fare.css";
 
 export const metadata: Metadata = {
   title: "بیا بازی",
