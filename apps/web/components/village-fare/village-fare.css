@@ -118,5 +118,5 @@
     font-size:var(--village-font);
   }
   .village-print-cell { font-size:20px; font-weight:800; }
-  .village-name-cell { font-size:var(--village-font); }
+  .village-name-cell { font-size:var(--village-font); }\n  .village-auto-fit-name { max-width:100%; overflow:hidden; white-space:nowrap; }
 }
