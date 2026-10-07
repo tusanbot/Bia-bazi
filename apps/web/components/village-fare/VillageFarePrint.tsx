@@ -64,10 +64,10 @@ function PrintPage({ right, left, fields, settings }: { right: Unit[]; left: Uni
   const size = PAPER[settings.paperSize], rowHeight = (size.h - 12) / 26;
   const gridTemplate = fields.map(f => f.id === "number" ? "1fr" : f.id === "village" ? "4fr" : f.id === "day" || f.id === "night" ? "2.5fr" : "1fr").join(" ");
   const style = { width: `${size.w}mm`, height: `${size.h}mm`, ["--village-row-height" as string]: `${rowHeight}mm`, ["--village-padding" as string]: `${settings.textPadding}mm`, ["--village-font" as string]: `${settings.villageFontSize}px`, ["--village-cols" as string]: String(Math.max(1, fields.length)), ["--village-grid-template" as string]: gridTemplate };
-  return <section className="village-print-page" style={style}><PrintColumn units={right} fields={fields} /><PrintColumn units={left} fields={fields} /></section>;
+  return <section className="village-print-page" style={style}><PrintColumn units={right} fields={fields} settings={settings} /><PrintColumn units={left} fields={fields} settings={settings} /></section>;
 }
 
-function PrintColumn({ units, fields }: { units: Unit[]; fields: { id: string; label: string }[] }) {
+function PrintColumn({ units, fields, settings }: { units: Unit[]; fields: { id: string; label: string }[]; settings: VillageFareSettings }) {
   const cells = units.slice(0, ROWS_PER_COLUMN);
   return <div className="village-print-column"><div className="village-print-header">{fields.map(f => <div key={f.id} className="village-print-title">{f.label}</div>)}</div><div className="village-print-body">
     {cells.map((u, i) => u.type === "letter"
