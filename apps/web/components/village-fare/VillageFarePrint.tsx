@@ -74,13 +74,13 @@ function PrintColumn({ units, fields }: { units: Unit[]; fields: { id: string; l
       ? <div className="village-print-row village-print-letter-row" key={`l-${i}-${u.letter}`}><div className="village-print-letter">{u.letter}</div></div>
       : u.type === "group"
         ? <div className="village-print-row village-print-letter-row" key={`g-${i}-${u.label}`}><div className="village-print-letter">{u.label}</div></div>
-        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => <div key={f.id} className={`village-print-cell ${f.id === "village" ? "village-name-cell" : ""}`}>{f.id === "village" ? <AutoFitVillageName value={getDisplayVillage(u.row.village)} /> : valueOf(u, f.id)}</div>)}</div>
+        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => <div key={f.id} className={`village-print-cell ${f.id === "village" ? "village-name-cell" : ""}`}>{f.id === "village" ? <AutoFitVillageName value={getDisplayVillage(u.row.village)} maxFontSize={settings.villageFontSize} /> : valueOf(u, f.id)}</div>)}</div>
     )}
     {Array.from({ length: Math.max(0, ROWS_PER_COLUMN - cells.length) }).map((_, i) => <div className="village-print-row village-print-data village-print-empty" key={`e-${i}`}>{fields.map(f => <div key={f.id} />)}</div>)}
   </div></div>;
 }
 
-function AutoFitVillageName({ value }: { value: string }) {
+function AutoFitVillageName({ value, maxFontSize }: { value: string; maxFontSize: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [fontSize, setFontSize] = useState<number | null>(null);
 
@@ -110,7 +110,7 @@ function AutoFitVillageName({ value }: { value: string }) {
     const observer = new ResizeObserver(fit);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [value]);
+  }, [value, maxFontSize]);
 
   return <div ref={ref} className="village-auto-fit-name" style={fontSize ? { fontSize: `${fontSize}px` } : undefined}>{value}</div>;
 }
