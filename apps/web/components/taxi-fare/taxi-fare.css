@@ -116,6 +116,6 @@
     font-weight:900;
     font-size:var(--taxi-max-font);
   }
-  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }\n  .taxi-wrap-city { white-space:normal !important; overflow-wrap:anywhere; word-break:normal; line-height:1.05; text-align:center; }
+  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }\n  .taxi-wrap-city { display:block; width:100%; white-space:normal !important; overflow-wrap:anywhere; word-break:normal; line-height:.72; max-height:1.5em; overflow:hidden; text-align:center; }
   .taxi-print-page-number { position:absolute; bottom:1mm; left:50%; transform:translateX(-50%); font-size:9px; }
 }
