@@ -108,6 +108,6 @@
     font-weight:900;
     font-size:var(--taxi-max-font);
   }
-  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }
+  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }\n  .taxi-auto-fit-city { max-width:100%; overflow:hidden; white-space:nowrap; }
   .taxi-print-page-number { position:absolute; bottom:1mm; left:50%; transform:translateX(-50%); font-size:9px; }
 }
