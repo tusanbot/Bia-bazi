@@ -37,7 +37,7 @@ function EditableCell({ value, onChange, number, fontSize, onFontSizeChange }: {
 
   return <td className="village-editable-cell">
     <div className="village-cell-editor">
-      <input value={value} inputMode={number ? "numeric" : "text"} onChange={e => onChange(number ? formatFare(e.target.value) : e.target.value)} />
+      <input style={fontSize ? { fontSize: `${fontSize}px` } : undefined} value={value} inputMode={number ? "numeric" : "text"} onChange={e => onChange(number ? formatFare(e.target.value) : e.target.value)} />
       <button type="button" className="village-cell-size-button" title="تغییر اندازه متن" onClick={() => {
         const current = fontSize ?? 20;
         const next = window.prompt("اندازه فونت این سلول را وارد کنید (۱۰ تا ۶۰):", String(current));
