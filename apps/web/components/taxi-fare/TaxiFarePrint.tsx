@@ -1,5 +1,5 @@
 "use client";
-import {useMemo} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import {getDisplayCity,getInitialLetter,getTaxiGroup} from "../../lib/taxi-fare/alphabet";
 import type {TaxiFareField,TaxiFareRow,TaxiFareSettings} from "../../lib/taxi-fare/types";
 const ROWS_PER_COLUMN=25,UNITS_PER_PAGE=50;
@@ -61,11 +61,39 @@ function PrintColumn({units,fields}:{units:Unit[];fields:{id:string;label:string
    ? <div className="taxi-print-row taxi-print-letter-row" key={`l-${i}-${u.letter}`}><div className="taxi-print-letter">{u.letter}</div></div>
    : u.type==="group"
      ? <div className="taxi-print-row taxi-print-letter-row" key={`g-${i}-${u.label}`}><div className="taxi-print-letter">{u.label}</div></div>
-     : <div className="taxi-print-row taxi-print-data" key={u.row.id}>{fields.map(f=><div key={f.id} className="taxi-print-cell">{valueOf(u,f.id)}</div>)}</div>
+     : <div className="taxi-print-row taxi-print-data" key={u.row.id}>{fields.map(f=><div key={f.id} className={`taxi-print-cell ${f.id==="city" ? "taxi-city-cell" : ""}`}>{f.id==="city" ? <AutoFitCityName value={getDisplayCity(u.row.city)} /> : valueOf(u,f.id)}</div>)}</div>
  )}
  {Array.from({length:Math.max(0,ROWS_PER_COLUMN-cells.length)}).map((_,i)=><div className="taxi-print-row taxi-print-data taxi-print-empty" key={`e-${i}`}>{fields.map(f=><div key={f.id}/>)}</div>)}
  </div></div>;
 }
+function AutoFitCityName({value}:{value:string}){
+ const ref=useRef<HTMLDivElement>(null);
+ const [fontSize,setFontSize]=useState<number|null>(null);
+
+ useEffect(()=>{
+  const element=ref.current;
+  if(!element)return;
+  const fit=()=>{
+   const base=parseFloat(getComputedStyle(element).fontSize);
+   const min=Math.min(16,base);
+   element.style.fontSize=`${base}px`;
+   if(element.scrollWidth<=element.clientWidth){setFontSize(null);return;}
+   let size=base;
+   while(size>min&&element.scrollWidth>element.clientWidth){
+    size-=1;
+    element.style.fontSize=`${size}px`;
+   }
+   setFontSize(size);
+  };
+  fit();
+  const observer=new ResizeObserver(fit);
+  observer.observe(element);
+  return()=>observer.disconnect();
+ },[value]);
+
+ return <div ref={ref} className="taxi-auto-fit-city" style={fontSize?{fontSize:`${fontSize}px`}:undefined}>{value}</div>;
+}
+
 function isLegacyField(name:string){
  const n=name.trim().replace(/[يى]/g,"ی").replace(/ك/g,"ک").replace(/[‌\u200c]/g," ").replace(/\s+/g," ");
  return n==="نام شهر و استان"||n==="استان"||n==="شهر و استان"||n==="ردیف";
