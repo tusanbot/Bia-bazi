@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getDisplayVillage, getInitialLetter, getVillageGroup } from "../../lib/village-fare/alphabet";
 import type { VillageFareField, VillageFareRow, VillageFareSettings } from "../../lib/village-fare/types";
 
@@ -74,10 +74,45 @@ function PrintColumn({ units, fields }: { units: Unit[]; fields: { id: string; l
       ? <div className="village-print-row village-print-letter-row" key={`l-${i}-${u.letter}`}><div className="village-print-letter">{u.letter}</div></div>
       : u.type === "group"
         ? <div className="village-print-row village-print-letter-row" key={`g-${i}-${u.label}`}><div className="village-print-letter">{u.label}</div></div>
-        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => <div key={f.id} className={`village-print-cell ${f.id === "village" ? "village-name-cell" : ""}`}>{valueOf(u, f.id)}</div>)}</div>
+        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => <div key={f.id} className={`village-print-cell ${f.id === "village" ? "village-name-cell" : ""}`}>{f.id === "village" ? <AutoFitVillageName value={getDisplayVillage(u.row.village)} /> : valueOf(u, f.id)}</div>)}</div>
     )}
     {Array.from({ length: Math.max(0, ROWS_PER_COLUMN - cells.length) }).map((_, i) => <div className="village-print-row village-print-data village-print-empty" key={`e-${i}`}>{fields.map(f => <div key={f.id} />)}</div>)}
   </div></div>;
+}
+
+function AutoFitVillageName({ value }: { value: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fontSize, setFontSize] = useState<number | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const fit = () => {
+      const base = parseFloat(getComputedStyle(element).fontSize);
+      const min = Math.min(16, base);
+      element.style.fontSize = `${base}px`;
+
+      if (element.scrollWidth <= element.clientWidth) {
+        setFontSize(null);
+        return;
+      }
+
+      let size = base;
+      while (size > min && element.scrollWidth > element.clientWidth) {
+        size -= 1;
+        element.style.fontSize = `${size}px`;
+      }
+      setFontSize(size);
+    };
+
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [value]);
+
+  return <div ref={ref} className="village-auto-fit-name" style={fontSize ? { fontSize: `${fontSize}px` } : undefined}>{value}</div>;
 }
 
 function isLegacyField(name: string) {
