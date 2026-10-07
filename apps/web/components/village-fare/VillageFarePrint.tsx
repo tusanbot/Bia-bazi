@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { getDisplayVillage, getInitialLetter, getVillageGroup } from "../../lib/village-fare/alphabet";
 import type { VillageFareField, VillageFareRow, VillageFareSettings } from "../../lib/village-fare/types";
 
@@ -63,7 +63,15 @@ export function VillageFarePrint({ rows, customFields, settings, enabled }: { ro
 function PrintPage({ right, left, fields, settings }: { right: Unit[]; left: Unit[]; fields: { id: string; label: string }[]; settings: VillageFareSettings }) {
   const size = PAPER[settings.paperSize], rowHeight = (size.h - 12) / 26;
   const gridTemplate = fields.map(f => f.id === "number" ? "1fr" : f.id === "village" ? "4fr" : f.id === "day" || f.id === "night" ? "2.5fr" : "1fr").join(" ");
-  const style = { width: `${size.w}mm`, height: `${size.h}mm`, ["--village-row-height" as string]: `${rowHeight}mm`, ["--village-padding" as string]: `${settings.textPadding}mm`, ["--village-font" as string]: `${settings.villageFontSize}px`, ["--village-cols" as string]: String(Math.max(1, fields.length)), ["--village-grid-template" as string]: gridTemplate };
+  const style = {
+    width: `${size.w}mm`,
+    height: `${size.h}mm`,
+    ["--village-row-height" as string]: `${rowHeight}mm`,
+    ["--village-padding" as string]: `${settings.textPadding}mm`,
+    ["--village-font" as string]: `${settings.villageFontSize}px`,
+    ["--village-cols" as string]: String(Math.max(1, fields.length)),
+    ["--village-grid-template" as string]: gridTemplate
+  };
   return <section className="village-print-page" style={style}><PrintColumn units={right} fields={fields} settings={settings} /><PrintColumn units={left} fields={fields} settings={settings} /></section>;
 }
 
@@ -74,45 +82,16 @@ function PrintColumn({ units, fields, settings }: { units: Unit[]; fields: { id:
       ? <div className="village-print-row village-print-letter-row" key={`l-${i}-${u.letter}`}><div className="village-print-letter">{u.letter}</div></div>
       : u.type === "group"
         ? <div className="village-print-row village-print-letter-row" key={`g-${i}-${u.label}`}><div className="village-print-letter">{u.label}</div></div>
-        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => <div key={f.id} className={`village-print-cell ${f.id === "village" ? "village-name-cell" : ""}`}>{f.id === "village" ? <AutoFitVillageName value={getDisplayVillage(u.row.village)} maxFontSize={settings.villageFontSize} /> : valueOf(u, f.id)}</div>)}</div>
+        : <div className="village-print-row village-print-data" key={u.row.id}>{fields.map(f => {
+            const customSize = u.row.fontSizes?.[f.id];
+            const baseSize = f.id === "village" ? settings.villageFontSize : 20;
+            const fontSize = customSize ?? baseSize;
+            const className = `village-print-cell ${f.id === "village" ? "village-name-cell village-wrap-name" : ""}`;
+            return <div key={f.id} className={className} style={{ fontSize: `${fontSize}px` }}>{valueOf(u, f.id)}</div>;
+          })}</div>
     )}
     {Array.from({ length: Math.max(0, ROWS_PER_COLUMN - cells.length) }).map((_, i) => <div className="village-print-row village-print-data village-print-empty" key={`e-${i}`}>{fields.map(f => <div key={f.id} />)}</div>)}
   </div></div>;
-}
-
-function AutoFitVillageName({ value, maxFontSize }: { value: string; maxFontSize: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [fontSize, setFontSize] = useState<number | null>(null);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const fit = () => {
-      const base = maxFontSize;
-      const min = Math.min(16, base);
-      element.style.fontSize = `${base}px`;
-
-      if (element.scrollWidth <= element.clientWidth) {
-        setFontSize(null);
-        return;
-      }
-
-      let size = base;
-      while (size > min && element.scrollWidth > element.clientWidth) {
-        size -= 1;
-        element.style.fontSize = `${size}px`;
-      }
-      setFontSize(size);
-    };
-
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [value, maxFontSize]);
-
-  return <div ref={ref} className="village-auto-fit-name" style={fontSize ? { fontSize: `${fontSize}px` } : undefined}>{value}</div>;
 }
 
 function isLegacyField(name: string) {
