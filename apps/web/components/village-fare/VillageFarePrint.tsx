@@ -89,7 +89,7 @@ function AutoFitVillageName({ value, maxFontSize }: { value: string; maxFontSize
     if (!element) return;
 
     const fit = () => {
-      const base = parseFloat(getComputedStyle(element).fontSize);
+      const base = maxFontSize;
       const min = Math.min(16, base);
       element.style.fontSize = `${base}px`;
 
