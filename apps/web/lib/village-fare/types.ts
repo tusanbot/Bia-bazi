@@ -4,6 +4,7 @@ export type VillageFareRow = {
   day: string;
   night: string;
   custom: Record<string, string>;
+  fontSizes?: Record<string, number>;
 };
 
 export type VillageFareField = {
