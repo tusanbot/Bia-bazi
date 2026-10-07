@@ -4,6 +4,7 @@ export type TaxiFareRow = {
   day: string;
   night: string;
   custom: Record<string, string>;
+  fontSizes?: Record<string, number>;
 };
 
 export type TaxiFareField = {
