@@ -126,5 +126,5 @@
     font-size:var(--village-font);
   }
   .village-print-cell { font-size:20px; font-weight:800; }
-  .village-name-cell { font-size:var(--village-font); }\n  .village-wrap-name { white-space:normal !important; overflow-wrap:anywhere; word-break:normal; line-height:1.05; text-align:center; }
+  .village-name-cell { font-size:var(--village-font); }\n  .village-wrap-name { display:block; width:100%; white-space:normal !important; overflow-wrap:anywhere; word-break:normal; line-height:.72; max-height:1.5em; overflow:hidden; text-align:center; }
 }
