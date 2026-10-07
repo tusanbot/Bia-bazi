@@ -23,7 +23,15 @@
 .taxi-data-table { width:100%; border-collapse:collapse; min-width:900px; }
 .taxi-data-table th,.taxi-data-table td { border-bottom:1px solid #e8ecef; padding:8px; text-align:center; }
 .taxi-data-table th { background:#f7f8fa; font-weight:800; }
-.taxi-data-table input { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; padding:8px; text-align:center; font:inherit; }
+.taxi-data-table input { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; padding:8px 30px 8px 8px; text-align:center; font:inherit; }
+.taxi-editable-cell { position:relative; }
+.taxi-cell-editor { position:relative; display:flex; align-items:center; justify-content:center; }
+.taxi-cell-editor input { min-width:0; }
+.taxi-cell-size-button,.taxi-cell-size-reset { position:absolute; top:50%; transform:translateY(-50%); border:0; border-radius:6px; width:22px; height:22px; padding:0; cursor:pointer; opacity:0; transition:opacity .15s; font:700 11px Tahoma,sans-serif; background:#eef2f5; color:#334155; }
+.taxi-cell-size-button { right:3px; }
+.taxi-cell-size-reset { right:27px; }
+.taxi-cell-editor:hover .taxi-cell-size-button,.taxi-cell-editor:hover .taxi-cell-size-reset,.taxi-cell-size-button:focus,.taxi-cell-size-reset:focus { opacity:1; }
+
 .taxi-data-table input:focus { border-color:#8da2b5; outline:none; background:white; }
 .icon-button { border:0; background:transparent; cursor:pointer; }
 .empty-state { padding:40px !important; color:#7a8794; }
@@ -108,6 +116,6 @@
     font-weight:900;
     font-size:var(--taxi-max-font);
   }
-  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }\n  .taxi-auto-fit-city { width:100%; min-width:0; flex:1 1 auto; display:block; overflow:hidden; white-space:nowrap; }
+  .taxi-print-cell { font-size:var(--taxi-max-font); font-weight:800; }\n  .taxi-wrap-city { white-space:normal !important; overflow-wrap:anywhere; word-break:normal; line-height:1.05; text-align:center; }
   .taxi-print-page-number { position:absolute; bottom:1mm; left:50%; transform:translateX(-50%); font-size:9px; }
 }
